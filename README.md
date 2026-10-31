@@ -15,3 +15,7 @@
 - **Frontend:** **Vue 3** + **TypeScript** — Reactive, modular UI paired with Tailwind CSS for an ergonomic dashboard experience.
 - **Data Layer:** **SQLite** — Embedded, zero-configuration local database for indexed activity storage and fast historical querying.
 - **Data Visualization:** High-performance canvas-based time-series charting designed for smooth panning and zooming across long endurance rides.
+
+## License
+
+DynoWatt is free software released under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-or-later). You are free to use, study, modify and redistribute it, provided that derivative works are distributed under the same license.

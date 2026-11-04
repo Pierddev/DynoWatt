@@ -16,6 +16,16 @@
 - **Data Layer:** **SQLite** — Embedded, zero-configuration local database for indexed activity storage and fast historical querying.
 - **Data Visualization:** High-performance canvas-based time-series charting designed for smooth panning and zooming across long endurance rides.
 
+## Development
+
+Toolchain versions (Rust, Node, pnpm) are pinned in `mise.toml`. You also need the [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/#linux) for your OS (on Arch: `webkit2gtk-4.1`, `base-devel`, `openssl`, `librsvg`, `libappindicator-gtk3`).
+
+```bash
+mise install
+pnpm install
+pnpm tauri dev
+```
+
 ## License
 
 DynoWatt is free software released under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-or-later). You are free to use, study, modify and redistribute it, provided that derivative works are distributed under the same license.

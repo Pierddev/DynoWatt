@@ -4,6 +4,7 @@ pub mod decoder;
 pub mod import;
 pub mod recompute;
 pub mod summary;
+pub mod telemetry;
 
 use std::path::PathBuf;
 use std::sync::Mutex;

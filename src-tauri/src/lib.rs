@@ -1,5 +1,6 @@
 pub mod db;
 pub mod decoder;
+pub mod summary;
 
 use std::sync::Mutex;
 

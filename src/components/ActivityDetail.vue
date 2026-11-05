@@ -5,10 +5,11 @@ import { toRow, type ListedActivity } from "../activities/list";
 import { activityTelemetry } from "../telemetry/commands";
 import { useTelemetry } from "../telemetry/useTelemetry";
 import ActivityType from "./ActivityType.vue";
+import DeleteActivity from "./DeleteActivity.vue";
 import TelemetryCharts from "./TelemetryCharts.vue";
 
 const props = defineProps<{ activity: ListedActivity }>();
-const emit = defineEmits<{ back: [] }>();
+const emit = defineEmits<{ back: []; deleted: [] }>();
 const i18n = useI18n();
 const { t } = i18n;
 
@@ -29,7 +30,7 @@ const FIGURES = ["elapsedTime", "movingTime", "distance", "elevationGain", "aver
 
 <template>
   <article aria-labelledby="activity-title" class="flex w-full max-w-5xl flex-col gap-4">
-    <div>
+    <div class="flex items-center justify-between gap-4">
       <button
         ref="backButton"
         type="button"
@@ -38,6 +39,7 @@ const FIGURES = ["elapsedTime", "movingTime", "distance", "elevationGain", "aver
       >
         <span aria-hidden="true">←</span> {{ t("detail.back") }}
       </button>
+      <DeleteActivity :activity-id="activity.id" @deleted="emit('deleted')" />
     </div>
     <header class="flex flex-wrap items-center gap-x-3 gap-y-1">
       <!-- One line, so a space separates the date from the time when read or copied. -->

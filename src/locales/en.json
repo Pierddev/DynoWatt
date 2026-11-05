@@ -31,7 +31,16 @@
   "detail": {
     "back": "Activities",
     "loading": "Loading the telemetry…",
-    "loadError": "The telemetry could not be loaded: {reason}"
+    "loadError": "The telemetry could not be loaded: {reason}",
+    "delete": "Delete"
+  },
+  "deleteActivity": {
+    "title": "Delete this activity?",
+    "body": "Its .FIT file will be removed from the Library too. Importing that file again brings the activity back.",
+    "cancel": "Cancel",
+    "confirm": "Delete activity",
+    "deleting": "Deleting…",
+    "error": "The activity could not be deleted: {reason}"
   },
   "telemetry": {
     "title": "Telemetry",

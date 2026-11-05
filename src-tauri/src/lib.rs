@@ -1,3 +1,4 @@
+pub mod activities;
 pub mod db;
 pub mod decoder;
 pub mod import;
@@ -27,6 +28,18 @@ fn import_paths(
     Ok(import::run(&conn, &library.0, &paths, chrono::Utc::now()))
 }
 
+/// The Athlete's Activities with their Activity Summary, newest first.
+#[tauri::command(async)]
+fn list_activities(
+    database: State<'_, db::Database>,
+) -> Result<Vec<activities::ListedActivity>, String> {
+    let conn = database
+        .0
+        .lock()
+        .map_err(|_| "the database is unavailable".to_owned())?;
+    activities::list(&conn, db::DEFAULT_ATHLETE).map_err(|err| err.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -39,7 +52,7 @@ pub fn run() {
             app.manage(Library(import::library_in(&data_dir)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![import_paths])
+        .invoke_handler(tauri::generate_handler![import_paths, list_activities])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

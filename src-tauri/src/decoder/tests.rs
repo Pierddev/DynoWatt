@@ -2,7 +2,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Duration, FixedOffset, Local, Offset, TimeZone, Utc};
 
-use super::fixtures::{Event, EventType, FileId, FitBuilder, Point, Sport, SubSport};
+use super::fixtures::{Event, EventType, FileId, FitBuilder, Point, Sport, SubSport, Totals};
 use super::*;
 use crate::db::FitFileId;
 
@@ -157,6 +157,52 @@ fn the_session_sport_wins_over_the_sport_message() {
         .record(at(0), Point::default())
         .build();
     assert!(is_not_cycling(decode(&bytes)));
+}
+
+#[test]
+fn the_session_totals_are_decoded() {
+    let totals = Totals {
+        distance_m: Some(42_195.37),
+        ascent_m: Some(512),
+    };
+    let bytes = FitBuilder::new()
+        .session_with(Sport::CYCLING, SubSport::ROAD, totals)
+        .record(at(0), Point::default())
+        .build();
+    let device = decoded(&bytes).device_totals;
+    assert!(close(device.distance_m, 42_195.37));
+    assert_eq!(device.elevation_gain_m, Some(512.0));
+}
+
+#[test]
+fn totals_the_session_lacks_are_unknown() {
+    assert_eq!(
+        decoded(&ride().build()).device_totals,
+        DeviceTotals::default()
+    );
+}
+
+#[test]
+fn without_a_session_message_the_device_totals_are_unknown() {
+    let bytes = FitBuilder::new()
+        .sport(Sport::CYCLING, SubSport::ROAD)
+        .record(at(0), Point::default())
+        .build();
+    assert_eq!(decoded(&bytes).device_totals, DeviceTotals::default());
+}
+
+#[test]
+fn the_totals_come_from_the_first_session() {
+    let totals = |distance_m| Totals {
+        distance_m: Some(distance_m),
+        ascent_m: None,
+    };
+    let bytes = FitBuilder::new()
+        .session_with(Sport::CYCLING, SubSport::ROAD, totals(1000.0))
+        .session_with(Sport::CYCLING, SubSport::ROAD, totals(2000.0))
+        .record(at(0), Point::default())
+        .build();
+    assert!(close(decoded(&bytes).device_totals.distance_m, 1000.0));
 }
 
 fn power(watts: u16) -> Point {

@@ -30,6 +30,13 @@ pub struct Point {
     pub distance_m: Option<f64>,
 }
 
+/// The totals of a `session` message; `None` leaves the field out.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Totals {
+    pub distance_m: Option<f64>,
+    pub ascent_m: Option<u16>,
+}
+
 /// The `file_id` triple a device writes.
 #[derive(Debug, Clone, Copy)]
 pub struct FileId {
@@ -79,22 +86,39 @@ impl FitBuilder {
     }
 
     /// A `session` message, where devices record the sport.
-    pub fn session(mut self, sport: Sport, sub_sport: SubSport) -> Self {
-        self.messages.push(message(
-            MesgNum::SESSION,
-            vec![
-                field(
-                    mesgdef::Session::SPORT,
-                    FitBaseType::ENUM,
-                    Value::Uint8(sport.0),
-                ),
-                field(
-                    mesgdef::Session::SUB_SPORT,
-                    FitBaseType::ENUM,
-                    Value::Uint8(sub_sport.0),
-                ),
-            ],
-        ));
+    pub fn session(self, sport: Sport, sub_sport: SubSport) -> Self {
+        self.session_with(sport, sub_sport, Totals::default())
+    }
+
+    /// A `session` message with the totals the device computed.
+    pub fn session_with(mut self, sport: Sport, sub_sport: SubSport, totals: Totals) -> Self {
+        let mut fields = vec![
+            field(
+                mesgdef::Session::SPORT,
+                FitBaseType::ENUM,
+                Value::Uint8(sport.0),
+            ),
+            field(
+                mesgdef::Session::SUB_SPORT,
+                FitBaseType::ENUM,
+                Value::Uint8(sub_sport.0),
+            ),
+        ];
+        if let Some(v) = totals.distance_m {
+            fields.push(field(
+                mesgdef::Session::TOTAL_DISTANCE,
+                FitBaseType::UINT32,
+                scaled(v, 100.0, 0.0),
+            ));
+        }
+        if let Some(v) = totals.ascent_m {
+            fields.push(field(
+                mesgdef::Session::TOTAL_ASCENT,
+                FitBaseType::UINT16,
+                Value::Uint16(v),
+            ));
+        }
+        self.messages.push(message(MesgNum::SESSION, fields));
         self
     }
 

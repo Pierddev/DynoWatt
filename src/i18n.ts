@@ -21,6 +21,7 @@ export const i18n = createI18n<[MessageSchema], "en">({
     en: {
       km: { minimumFractionDigits: 1, maximumFractionDigits: 1 },
       whole: { maximumFractionDigits: 0 },
+      tenths: { minimumFractionDigits: 1, maximumFractionDigits: 1 },
     },
   },
 });

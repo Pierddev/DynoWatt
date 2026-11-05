@@ -22,7 +22,9 @@
       "km": "{value} km",
       "m": "{value} m",
       "watts": "{value} W",
-      "bpm": "{value} bpm"
+      "bpm": "{value} bpm",
+      "rpm": "{value} rpm",
+      "kmh": "{value} km/h"
     }
   },
   "import": {

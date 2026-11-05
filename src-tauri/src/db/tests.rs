@@ -514,3 +514,44 @@ fn stale_summaries_are_those_older_than_the_current_version() {
 
     assert_eq!(list_stale_summaries(&conn, 2).unwrap(), stale);
 }
+
+#[test]
+fn updating_a_summary_rewrites_only_its_figures_and_version() {
+    let conn = open_in_memory().unwrap();
+    let updated = insert_activity(&conn, &record(1)).unwrap();
+    let untouched = insert_activity(&conn, &record(2)).unwrap();
+    let summary = ActivitySummary {
+        version: 7,
+        elapsed_time_s: 11,
+        moving_time_s: 12,
+        distance_m: Some(13.5),
+        elevation_gain_m: Some(14.5),
+        average_power_w: Some(15.5),
+        average_hr_bpm: Some(16.5),
+    };
+
+    update_summary(&conn, updated, &summary).unwrap();
+
+    assert_eq!(
+        list_activities(&conn, DEFAULT_ATHLETE).unwrap(),
+        [
+            Activity {
+                id: untouched,
+                record: record(2),
+            },
+            Activity {
+                id: updated,
+                record: ActivityRecord {
+                    elapsed_time_s: 11,
+                    moving_time_s: 12,
+                    distance_m: Some(13.5),
+                    elevation_gain_m: Some(14.5),
+                    average_power_w: Some(15.5),
+                    average_hr_bpm: Some(16.5),
+                    summary_version: 7,
+                    ..record(1)
+                },
+            },
+        ]
+    );
+}

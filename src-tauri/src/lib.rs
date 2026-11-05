@@ -2,6 +2,7 @@ pub mod activities;
 pub mod db;
 pub mod decoder;
 pub mod import;
+pub mod library;
 pub mod recompute;
 pub mod summary;
 pub mod telemetry;
@@ -57,6 +58,21 @@ fn activity_telemetry(
     telemetry::of_activity(&conn, &library.0, db::ActivityId(id))
 }
 
+/// Deletes the Activity `id` together with its Source File in the Library:
+/// both, or neither when one of them fails.
+#[tauri::command(async)]
+fn delete_activity(
+    id: i64,
+    database: State<'_, db::Database>,
+    library: State<'_, Library>,
+) -> Result<(), String> {
+    let mut conn = database
+        .0
+        .lock()
+        .map_err(|_| "the database is unavailable".to_owned())?;
+    library::delete_activity(&mut conn, &library.0, db::ActivityId(id))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -76,7 +92,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             import_paths,
             list_activities,
-            activity_telemetry
+            activity_telemetry,
+            delete_activity
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

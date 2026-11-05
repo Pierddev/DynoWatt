@@ -187,3 +187,157 @@ fn a_five_hour_ride_with_every_sensor_fits_in_a_megabyte() {
 
     assert!(json.len() < 1_000_000, "{} bytes", json.len());
 }
+
+/// An Activity recorded in the database, its Source File in a Library.
+mod of_activity {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use chrono::{DateTime, Duration, Utc};
+    use rusqlite::Connection;
+    use tempfile::TempDir;
+
+    use super::super::*;
+    use crate::db::{ActivityRecord, DEFAULT_ATHLETE, FitFileId, insert_activity, open_in_memory};
+    use crate::decoder::fixtures::{FileId, FitBuilder, Point, Sport, SubSport};
+
+    fn start() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-06-01T07:00:00Z")
+            .unwrap()
+            .to_utc()
+    }
+
+    /// Two seconds at 200 and 210 W, a 30-second dropout, then 220 W: no
+    /// heart rate strap.
+    fn ride() -> Vec<u8> {
+        let point = |power_w| Point {
+            power_w: Some(power_w),
+            ..Point::default()
+        };
+        FitBuilder::new()
+            .file_id(FileId {
+                manufacturer: 1,
+                serial_number: 1,
+                time_created: start(),
+            })
+            .session(Sport::CYCLING, SubSport::GENERIC)
+            .record(start(), point(200))
+            .record(start() + Duration::seconds(1), point(210))
+            .record(start() + Duration::seconds(32), point(220))
+            .build()
+    }
+
+    fn record(source_path: &str) -> ActivityRecord {
+        ActivityRecord {
+            athlete_id: DEFAULT_ATHLETE,
+            source_path: source_path.to_owned(),
+            content_hash: format!("hash-{source_path}"),
+            fit_file_id: FitFileId::default(),
+            start_utc: start(),
+            utc_offset_s: 7200,
+            is_indoor: false,
+            elapsed_time_s: 32,
+            moving_time_s: 2,
+            distance_m: None,
+            elevation_gain_m: None,
+            average_power_w: Some(205.0),
+            average_hr_bpm: None,
+            summary_version: 2,
+            imported_at: start(),
+        }
+    }
+
+    /// An empty Library and a database.
+    struct Setup {
+        dir: TempDir,
+        conn: Connection,
+    }
+
+    impl Setup {
+        fn new() -> Self {
+            Setup {
+                dir: TempDir::new().unwrap(),
+                conn: open_in_memory().unwrap(),
+            }
+        }
+
+        fn library(&self) -> PathBuf {
+            self.dir.path().join("library")
+        }
+
+        /// Records an Activity at `source_path` and, unless `bytes` is
+        /// `None`, puts its Source File in the Library.
+        fn activity(&self, source_path: &str, bytes: Option<&[u8]>) -> ActivityId {
+            if let Some(bytes) = bytes {
+                let file = self.library().join(source_path);
+                fs::create_dir_all(file.parent().unwrap()).unwrap();
+                fs::write(file, bytes).unwrap();
+            }
+            insert_activity(&self.conn, &record(source_path)).unwrap()
+        }
+
+        fn telemetry(&self, id: ActivityId) -> Result<Telemetry, String> {
+            of_activity(&self.conn, &self.library(), id)
+        }
+    }
+
+    #[test]
+    fn an_activity_s_telemetry_is_decoded_from_its_source_file() {
+        let setup = Setup::new();
+        setup.activity("2026/other.fit", Some(b"not a FIT file"));
+        let id = setup.activity("2026/ride.fit", Some(&ride()));
+
+        let telemetry = setup.telemetry(id).unwrap();
+
+        assert_eq!(telemetry.time_s, (0..=32).collect::<Vec<u32>>());
+        let mut power = vec![Some(200), Some(210)];
+        power.extend([None; 30]);
+        power.push(Some(220));
+        assert_eq!(telemetry.power_w, Some(power));
+        assert_eq!(telemetry.heart_rate_bpm, None);
+    }
+
+    #[test]
+    fn an_unknown_activity_has_no_telemetry() {
+        let setup = Setup::new();
+        let id = setup.activity("2026/ride.fit", Some(&ride()));
+
+        assert_eq!(
+            setup.telemetry(ActivityId(id.0 + 1)),
+            Err(format!("no Activity has the id {}", id.0 + 1))
+        );
+    }
+
+    #[test]
+    fn a_missing_source_file_is_reported_by_name() {
+        let setup = Setup::new();
+        let id = setup.activity("2026/ride.fit", None);
+
+        let reason = setup.telemetry(id).unwrap_err();
+
+        assert!(reason.starts_with("cannot read "), "{reason}");
+        assert!(reason.contains("ride.fit"), "{reason}");
+    }
+
+    #[test]
+    fn an_undecodable_source_file_is_reported_by_name() {
+        let setup = Setup::new();
+        let id = setup.activity("2026/ride.fit", Some(b"not a FIT file"));
+
+        let reason = setup.telemetry(id).unwrap_err();
+
+        assert!(reason.starts_with("cannot decode "), "{reason}");
+        assert!(reason.contains("ride.fit"), "{reason}");
+    }
+
+    #[test]
+    fn a_database_failure_is_reported() {
+        let setup = Setup::new();
+        let id = setup.activity("2026/ride.fit", Some(&ride()));
+        setup.conn.execute("DROP TABLE activity", []).unwrap();
+
+        let reason = setup.telemetry(id).unwrap_err();
+
+        assert!(reason.starts_with("cannot find the Activity: "), "{reason}");
+    }
+}

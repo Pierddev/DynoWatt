@@ -5,9 +5,13 @@
 #[cfg(test)]
 mod tests;
 
+use std::path::Path;
+
+use rusqlite::Connection;
 use serde::Serialize;
 
-use crate::decoder::{Sample, Timeline};
+use crate::db::{self, ActivityId};
+use crate::decoder::{self, Sample, Timeline};
 
 /// The Samples of an Activity, one column per channel. Entry `i` of a column
 /// is second `time_s[i]` of the timeline; `None` there is a Gap, or a second
@@ -26,6 +30,16 @@ pub struct Telemetry {
     pub altitude_m: Option<Vec<Option<f64>>>,
     /// Rounded to 0.001 m/s.
     pub speed_m_s: Option<Vec<Option<f64>>>,
+}
+
+/// The telemetry of the Activity `id`, decoded again from its Source File in
+/// `library`. The error says why it cannot be, for the Athlete to read.
+pub fn of_activity(conn: &Connection, library: &Path, id: ActivityId) -> Result<Telemetry, String> {
+    let activity = db::find_activity(conn, id)
+        .map_err(|e| format!("cannot find the Activity: {e}"))?
+        .ok_or_else(|| format!("no Activity has the id {}", id.0))?;
+    let decoded = decoder::decode_file(&library.join(&activity.record.source_path))?;
+    Ok(columns(&decoded.timeline))
 }
 
 /// Lays `timeline` out in columns. Altitude and speed are rounded to about

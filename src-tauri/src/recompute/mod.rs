@@ -6,7 +6,6 @@
 #[cfg(test)]
 mod tests;
 
-use std::fs;
 use std::path::Path;
 
 use rusqlite::Connection;
@@ -52,10 +51,7 @@ pub fn stale_summaries(conn: &Connection, library: &Path) -> rusqlite::Result<Re
 /// Computes the summary of `activity` again from its Source File and records
 /// it with the current version.
 fn recompute(conn: &Connection, library: &Path, activity: &Activity) -> Result<(), String> {
-    let file = library.join(&activity.record.source_path);
-    let bytes = fs::read(&file).map_err(|e| format!("cannot read {}: {e}", file.display()))?;
-    let decoded =
-        decoder::decode(&bytes).map_err(|e| format!("cannot decode {}: {e}", file.display()))?;
+    let decoded = decoder::decode_file(&library.join(&activity.record.source_path))?;
     let summary = summarize(&decoded.timeline, &decoded.device_totals);
     db::update_summary(conn, activity.id, &summary)
         .map_err(|e| format!("cannot record the summary: {e}"))

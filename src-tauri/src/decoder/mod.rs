@@ -9,7 +9,9 @@ mod timeline;
 
 use std::collections::HashSet;
 use std::fmt;
+use std::fs;
 use std::ops::RangeInclusive;
+use std::path::Path;
 
 use chrono::{DateTime, Local, NaiveDate, Offset, TimeZone, Utc};
 use fitparser::de::{DecodeOption, from_bytes_with_options};
@@ -77,6 +79,13 @@ impl std::error::Error for DecodeError {}
 /// ride happened, the machine's time zone stands in.
 pub fn decode(bytes: &[u8]) -> Result<DecodedActivity, DecodeError> {
     decode_in(bytes, &Local)
+}
+
+/// Reads and decodes the Source File at `path`. The error says which file
+/// and why, for a log or the Athlete to read.
+pub fn decode_file(path: &Path) -> Result<DecodedActivity, String> {
+    let bytes = fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    decode(&bytes).map_err(|e| format!("cannot decode {}: {e}", path.display()))
 }
 
 /// [`decode`], with `machine` as the time zone to fall back on.

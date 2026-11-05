@@ -476,6 +476,30 @@ fn only_the_given_athletes_activities_are_listed() {
 }
 
 #[test]
+fn an_activity_is_found_by_its_id() {
+    let conn = open_in_memory().unwrap();
+    insert_activity(&conn, &record(1)).unwrap();
+    let id = insert_activity(&conn, &record(2)).unwrap();
+    insert_activity(&conn, &record(3)).unwrap();
+
+    assert_eq!(
+        find_activity(&conn, id).unwrap(),
+        Some(Activity {
+            id,
+            record: record(2)
+        })
+    );
+}
+
+#[test]
+fn an_unknown_activity_is_not_found() {
+    let conn = open_in_memory().unwrap();
+    let id = insert_activity(&conn, &record(1)).unwrap();
+
+    assert_eq!(find_activity(&conn, ActivityId(id.0 + 1)).unwrap(), None);
+}
+
+#[test]
 fn deleting_an_activity_removes_only_its_row() {
     let conn = open_in_memory().unwrap();
     let deleted = insert_activity(&conn, &record(1)).unwrap();

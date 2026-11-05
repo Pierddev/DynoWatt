@@ -1,11 +1,20 @@
 <script setup lang="ts">
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { onBeforeUnmount, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import ImportReport from "./components/ImportReport.vue";
 import { importPaths, pickFiles, pickFolders } from "./import/commands";
 import { useImport } from "./import/useImport";
 
 const { t } = useI18n();
-const { running, report, error, pick, dismiss } = useImport(importPaths);
+const { running, dragging, report, error, pick, onDragDrop, dismiss } = useImport(importPaths);
+
+// Files dropped anywhere on the window: the webview catches the drop, not the DOM.
+let stopDragDrop: (() => void) | undefined;
+onMounted(async () => {
+  stopDragDrop = await getCurrentWebview().onDragDropEvent(({ payload }) => onDragDrop(payload));
+});
+onBeforeUnmount(() => stopDragDrop?.());
 
 const BUTTON =
   "rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-500 disabled:cursor-not-allowed disabled:opacity-50";
@@ -47,7 +56,16 @@ const BUTTON =
       </p>
       <p v-if="running" role="status" class="text-neutral-500 dark:text-neutral-400">{{ t("import.running") }}</p>
       <ImportReport v-else-if="report" :report="report" @close="dismiss" />
-      <p v-else class="text-neutral-500 dark:text-neutral-400">{{ t("activities.empty") }}</p>
+      <div v-else class="text-center text-neutral-500 dark:text-neutral-400">
+        <p>{{ t("activities.empty") }}</p>
+        <p class="mt-1 text-sm">{{ t("import.dropHint") }}</p>
+      </div>
     </main>
+    <div
+      v-if="dragging"
+      class="pointer-events-none fixed inset-3 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-neutral-400 bg-neutral-50/90 text-lg font-medium dark:border-neutral-500 dark:bg-neutral-900/90"
+    >
+      {{ t("import.dropHere") }}
+    </div>
   </div>
 </template>

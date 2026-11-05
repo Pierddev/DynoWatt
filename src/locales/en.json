@@ -9,6 +9,8 @@
     "files": "Import files",
     "folder": "Import folder",
     "fitFiles": "FIT files",
+    "dropHint": "You can also drop .FIT files or folders onto this window.",
+    "dropHere": "Drop to import",
     "running": "Importing…",
     "error": "The import could not run: {reason}"
   },

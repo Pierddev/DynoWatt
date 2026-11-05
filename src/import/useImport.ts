@@ -7,9 +7,17 @@ export type Importer = (paths: string[]) => Promise<ImportReport>;
 /** Asks the Athlete for paths to import; none when they cancel. */
 export type Picker = () => Promise<string[]>;
 
+/** A drag-and-drop over the window, as the webview reports it. */
+export type DragDrop =
+  | { type: "enter"; paths: string[] }
+  | { type: "over" }
+  | { type: "drop"; paths: string[] }
+  | { type: "leave" };
+
 /** The state of the import: one run at a time, then its Import Report. */
 export function useImport(importPaths: Importer) {
   const running = ref(false);
+  const dragging = ref(false);
   const report = ref<ImportReport | null>(null);
   const error = ref<string | null>(null);
 
@@ -41,10 +49,20 @@ export function useImport(importPaths: Importer) {
     await run(paths);
   }
 
+  /** Follows a drag over the window and imports what is dropped on it. */
+  function onDragDrop(event: DragDrop): void {
+    if (event.type === "drop") {
+      dragging.value = false;
+      void run(event.paths);
+    } else {
+      dragging.value = event.type !== "leave" && !running.value;
+    }
+  }
+
   /** Closes the Import Report. */
   function dismiss(): void {
     report.value = null;
   }
 
-  return { running, report, error, run, pick, dismiss };
+  return { running, dragging, report, error, run, pick, onDragDrop, dismiss };
 }

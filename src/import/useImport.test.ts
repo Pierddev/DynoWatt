@@ -147,6 +147,45 @@ describe("pick", () => {
   });
 });
 
+describe("onDragDrop", () => {
+  it("shows the drop target while files are dragged over the window", () => {
+    const { dragging, onDragDrop } = useImport(async () => report);
+
+    onDragDrop({ type: "enter", paths: ["/rides/a.fit"] });
+    expect(dragging.value).toBe(true);
+    onDragDrop({ type: "leave" });
+    expect(dragging.value).toBe(false);
+    onDragDrop({ type: "over" });
+    expect(dragging.value).toBe(true);
+  });
+
+  it("imports what is dropped and hides the drop target", async () => {
+    const { importer, finish } = pendingImporter();
+    const { dragging, running, onDragDrop } = useImport(importer);
+    onDragDrop({ type: "enter", paths: ["/rides/a.fit", "/rides/2026"] });
+
+    onDragDrop({ type: "drop", paths: ["/rides/a.fit", "/rides/2026"] });
+
+    expect(dragging.value).toBe(false);
+    expect(running.value).toBe(true);
+    expect(importer).toHaveBeenCalledWith(["/rides/a.fit", "/rides/2026"]);
+    finish(report);
+  });
+
+  it("shows no drop target while a run is going on", async () => {
+    const { importer, finish } = pendingImporter();
+    const { dragging, run, onDragDrop } = useImport(importer);
+    const first = run(["/rides/a.fit"]);
+
+    onDragDrop({ type: "enter", paths: ["/rides/b.fit"] });
+    onDragDrop({ type: "over" });
+
+    expect(dragging.value).toBe(false);
+    finish(report);
+    await first;
+  });
+});
+
 describe("dismiss", () => {
   it("closes the Import Report", async () => {
     const { report: shown, run, dismiss } = useImport(async () => report);

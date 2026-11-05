@@ -78,6 +78,7 @@ fn the_local_start_keeps_its_seconds_and_crosses_midnight() {
 fn a_listed_activity_carries_its_activity_summary() {
     let mut indoor = record(1, "2026-03-14T07:00:00Z", 3600);
     indoor.is_indoor = true;
+    indoor.elapsed_time_s = 5400;
     indoor.moving_time_s = 5025;
     indoor.distance_m = Some(42_195.0);
     indoor.elevation_gain_m = Some(512.4);
@@ -90,6 +91,7 @@ fn a_listed_activity_carries_its_activity_summary() {
             id: 1,
             start_local: "2026-03-14T08:00:00".to_owned(),
             is_indoor: true,
+            elapsed_time_s: 5400,
             moving_time_s: 5025,
             distance_m: Some(42_195.0),
             elevation_gain_m: Some(512.4),
@@ -153,6 +155,7 @@ fn a_listed_activity_serialises_as_the_frontend_reads_it() {
             "id": 1,
             "startLocal": "2026-03-14T08:00:00",
             "isIndoor": false,
+            "elapsedTimeS": 3700,
             "movingTimeS": 3600,
             "distanceM": 30_500.5,
             "elevationGainM": 420.0,

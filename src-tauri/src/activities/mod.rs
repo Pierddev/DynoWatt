@@ -20,6 +20,8 @@ pub struct ListedActivity {
     /// wherever the list is shown.
     pub start_local: String,
     pub is_indoor: bool,
+    /// From the first Sample to the last, Gaps included.
+    pub elapsed_time_s: u32,
     pub moving_time_s: u32,
     pub distance_m: Option<f64>,
     pub elevation_gain_m: Option<f64>,
@@ -43,6 +45,7 @@ fn listed(activity: Activity) -> ListedActivity {
         id: activity.id.0,
         start_local: start_local.format("%Y-%m-%dT%H:%M:%S").to_string(),
         is_indoor: record.is_indoor,
+        elapsed_time_s: record.elapsed_time_s,
         moving_time_s: record.moving_time_s,
         distance_m: record.distance_m,
         elevation_gain_m: record.elevation_gain_m,

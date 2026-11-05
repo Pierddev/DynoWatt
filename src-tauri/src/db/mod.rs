@@ -198,6 +198,16 @@ pub fn list_activities(
         .collect()
 }
 
+/// The Activity `id`, or `None` when no Activity has this id.
+pub fn find_activity(conn: &Connection, id: ActivityId) -> rusqlite::Result<Option<Activity>> {
+    conn.query_row(
+        "SELECT * FROM activity WHERE id = ?1",
+        [id.0],
+        read_activity,
+    )
+    .optional()
+}
+
 /// Returns `false` when no Activity has this id.
 pub fn delete_activity(conn: &Connection, id: ActivityId) -> rusqlite::Result<bool> {
     Ok(conn.execute("DELETE FROM activity WHERE id = ?1", [id.0])? > 0)

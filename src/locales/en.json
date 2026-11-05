@@ -3,7 +3,18 @@
     "name": "DynoWatt"
   },
   "activities": {
+    "title": "Activities",
     "empty": "No activities yet. Import a .FIT file to get started.",
+    "loadError": "The activities could not be loaded: {reason}",
+    "column": {
+      "start": "Date",
+      "type": "Type",
+      "movingTime": "Moving time",
+      "distance": "Distance",
+      "elevationGain": "Elevation gain",
+      "averagePower": "Average power",
+      "averageHeartRate": "Average HR"
+    },
     "road": "Road",
     "indoor": "Indoor",
     "missing": "—",

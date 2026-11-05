@@ -2,6 +2,7 @@ pub mod activities;
 pub mod db;
 pub mod decoder;
 pub mod import;
+pub mod recompute;
 pub mod summary;
 
 use std::path::PathBuf;
@@ -48,11 +49,31 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             let conn = db::open(&db::path_in(&data_dir))?;
+            let library = import::library_in(&data_dir);
+            // Before the commands get the database, so the activity list
+            // never shows figures computed by older rules.
+            log_skipped(recompute::stale_summaries(&conn, &library));
             app.manage(db::Database(Mutex::new(conn)));
-            app.manage(Library(import::library_in(&data_dir)));
+            app.manage(Library(library));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![import_paths, list_activities])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Logs the summaries the recompute left with their older figures. None of
+/// it stops the app from starting.
+fn log_skipped(recompute: rusqlite::Result<recompute::RecomputeReport>) {
+    match recompute {
+        Ok(report) => {
+            for skipped in report.skipped {
+                eprintln!(
+                    "summary of Activity {} not recomputed: {}",
+                    skipped.activity_id.0, skipped.reason
+                );
+            }
+        }
+        Err(e) => eprintln!("stale summaries not recomputed: {e}"),
+    }
 }

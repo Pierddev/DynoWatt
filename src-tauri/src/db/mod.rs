@@ -10,6 +10,8 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{Connection, OptionalExtension, Row, ToSql, named_params};
 
+use crate::summary::ActivitySummary;
+
 /// Row id of an Athlete.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AthleteId(pub i64);
@@ -210,6 +212,38 @@ pub fn list_stale_summaries(
     conn.prepare("SELECT * FROM activity WHERE summary_version < ?1 ORDER BY id")?
         .query_map([current_version], read_activity)?
         .collect()
+}
+
+/// Replaces the Activity Summary of the Activity `id`, and the version that
+/// computed it, leaving its other columns as they are. Does nothing when no
+/// Activity has this id.
+pub fn update_summary(
+    conn: &Connection,
+    id: ActivityId,
+    summary: &ActivitySummary,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE activity SET
+           elapsed_time_s = :elapsed_time_s,
+           moving_time_s = :moving_time_s,
+           distance_m = :distance_m,
+           elevation_gain_m = :elevation_gain_m,
+           average_power_w = :average_power_w,
+           average_hr_bpm = :average_hr_bpm,
+           summary_version = :summary_version
+         WHERE id = :id",
+        named_params! {
+            ":id": id.0,
+            ":elapsed_time_s": summary.elapsed_time_s,
+            ":moving_time_s": summary.moving_time_s,
+            ":distance_m": summary.distance_m,
+            ":elevation_gain_m": summary.elevation_gain_m,
+            ":average_power_w": summary.average_power_w,
+            ":average_hr_bpm": summary.average_hr_bpm,
+            ":summary_version": summary.version,
+        },
+    )?;
+    Ok(())
 }
 
 fn read_activity(row: &Row<'_>) -> rusqlite::Result<Activity> {

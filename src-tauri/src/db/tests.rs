@@ -37,6 +37,14 @@ fn ids(activities: &[Activity]) -> Vec<ActivityId> {
 }
 
 #[test]
+fn the_database_sits_in_the_app_data_directory() {
+    assert_eq!(
+        path_in(Path::new("/data/dynowatt")),
+        Path::new("/data/dynowatt/dynowatt.db")
+    );
+}
+
+#[test]
 fn migrations_are_valid() {
     migrations::MIGRATIONS.validate().unwrap();
 }

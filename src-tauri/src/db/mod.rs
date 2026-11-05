@@ -3,7 +3,8 @@
 
 mod migrations;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
@@ -58,6 +59,14 @@ pub struct ActivityRecord {
 pub struct Activity {
     pub id: ActivityId,
     pub record: ActivityRecord,
+}
+
+/// The connection Tauri commands share, as managed state.
+pub struct Database(pub Mutex<Connection>);
+
+/// Where the database lives in the app data directory: next to the Library.
+pub fn path_in(data_dir: &Path) -> PathBuf {
+    data_dir.join("dynowatt.db")
 }
 
 /// Opens the database at `path`, creating it if needed, and brings its schema

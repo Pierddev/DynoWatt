@@ -13,7 +13,8 @@ fn at(text: &str) -> DateTime<Utc> {
 const NOW: &str = "2026-11-05T09:30:00Z";
 
 /// A ride recorded by the device with serial number `serial`, from `start`
-/// for `seconds` seconds at `power_w`, two hours ahead of UTC.
+/// for `seconds` seconds at `power_w`, two hours ahead of UTC. A record is an
+/// instant, so the ride has one at each end: `seconds + 1` in all.
 fn ride_at(serial: u32, start: &str, seconds: i64, power_w: u16) -> Vec<u8> {
     fit_file(serial, start, seconds, Sport::CYCLING, power_w)
 }
@@ -27,7 +28,7 @@ fn fit_file(serial: u32, start: &str, seconds: i64, sport: Sport, power_w: u16) 
             time_created: start,
         })
         .session(sport, SubSport::GENERIC);
-    for s in 0..seconds {
+    for s in 0..=seconds {
         fit = fit.record(
             start + Duration::seconds(s),
             Point {
@@ -358,7 +359,7 @@ fn back_to_back_rides_do_not_overlap() {
 fn rides_sharing_their_last_second_overlap() {
     let setup = Setup::new();
     let later = setup.source("later.fit", &ride_at(1, "2026-06-01T07:00:59Z", 60, 200));
-    // 07:00:00 through 07:00:59.
+    // 07:00:00 to 07:01:00: its last second is the later ride's first.
     let earlier = setup.source("earlier.fit", &ride_at(2, "2026-06-01T07:00:00Z", 60, 200));
     setup.import(&[later]);
     let later_path = setup.activities()[0].record.source_path.clone();

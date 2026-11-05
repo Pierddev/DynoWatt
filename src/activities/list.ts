@@ -8,6 +8,8 @@ export interface ListedActivity {
   /** The wall-clock time where the ride started, `YYYY-MM-DDTHH:MM:SS`, no offset. */
   startLocal: string;
   isIndoor: boolean;
+  /** From the first Sample to the last, Gaps included. */
+  elapsedTimeS: number;
   movingTimeS: number;
   distanceM: number | null;
   elevationGainM: number | null;
@@ -22,6 +24,7 @@ export interface ActivityRow {
   time: string;
   isIndoor: boolean;
   type: string;
+  elapsedTime: string;
   movingTime: string;
   distance: string;
   elevationGain: string;
@@ -50,6 +53,7 @@ export function toRow(activity: ListedActivity, { t, d, n }: Formatter): Activit
     time: d(start, "time"),
     isIndoor: activity.isIndoor,
     type: t(activity.isIndoor ? "activities.indoor" : "activities.road"),
+    elapsedTime: formatDuration(activity.elapsedTimeS),
     movingTime: formatDuration(activity.movingTimeS),
     distance: figure(activity.distanceM === null ? null : activity.distanceM / 1000, "km", "km"),
     elevationGain: figure(activity.elevationGainM, "m", "whole"),

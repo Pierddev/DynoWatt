@@ -7,6 +7,7 @@ function activity(id: number): ListedActivity {
     id,
     startLocal: "2026-03-14T08:00:00",
     isIndoor: false,
+    elapsedTimeS: 3900,
     movingTimeS: 3600,
     distanceM: 30_000,
     elevationGainM: 400,

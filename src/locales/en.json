@@ -1,0 +1,8 @@
+{
+  "app": {
+    "name": "DynoWatt"
+  },
+  "activities": {
+    "empty": "No activities yet. Import a .FIT file to get started."
+  }
+}

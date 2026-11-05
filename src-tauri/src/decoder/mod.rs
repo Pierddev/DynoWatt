@@ -5,6 +5,7 @@
 mod fixtures;
 #[cfg(test)]
 mod tests;
+mod timeline;
 
 use std::collections::HashSet;
 use std::fmt;
@@ -16,6 +17,9 @@ use fitparser::{FitDataRecord, Value};
 use sha2::{Digest, Sha256};
 
 use crate::db::FitFileId;
+use timeline::{TimelineError, Timer};
+
+pub use timeline::{Sample, Timeline};
 
 /// What a Source File holds, in DynoWatt's terms.
 #[derive(Debug, Clone, PartialEq)]
@@ -27,12 +31,15 @@ pub struct DecodedActivity {
     pub content_hash: String,
     /// Ridden on a home trainer.
     pub is_indoor: bool,
+    /// The Samples, one per second, with Gaps; starts at the Activity's start.
+    pub timeline: Timeline,
 }
 
 /// Why a Source File cannot become an Activity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeError {
-    /// Not a readable FIT file: failed CRC, truncated or garbled data.
+    /// Not a readable FIT file: failed CRC, truncated or garbled data, no
+    /// timestamped record, or records spread over more than a week.
     Unreadable(String),
     /// A readable file recording something other than cycling, or no sport
     /// at all.
@@ -57,6 +64,16 @@ pub fn decode(bytes: &[u8]) -> Result<DecodedActivity, DecodeError> {
     let options = HashSet::from([DecodeOption::ReturnNumericEnumValues]);
     let messages = from_bytes_with_options(bytes, &options)
         .map_err(|e| DecodeError::Unreadable(e.to_string()))?;
+    let timeline =
+        timeline::resample(records(&messages), &timer_events(&messages)).map_err(|e| {
+            DecodeError::Unreadable(match e {
+                TimelineError::NoRecord => "no timestamped record".to_owned(),
+                TimelineError::TooLong => format!(
+                    "records span more than {} days",
+                    timeline::MAX_TIMELINE_S / 86_400
+                ),
+            })
+        })?;
     let (sport, sub_sport) = sport(&messages).ok_or(DecodeError::NotCycling)?;
     if sport != CYCLING {
         return Err(DecodeError::NotCycling);
@@ -65,7 +82,51 @@ pub fn decode(bytes: &[u8]) -> Result<DecodedActivity, DecodeError> {
         fit_file_id: file_id(&messages),
         content_hash: content_hash(bytes),
         is_indoor: sub_sport.is_some_and(|s| INDOOR_SUB_SPORTS.contains(&s)),
+        timeline,
     })
+}
+
+/// The `record` messages that carry a timestamp, with their values.
+fn records(messages: &[FitDataRecord]) -> Vec<(DateTime<Utc>, Sample)> {
+    messages
+        .iter()
+        .filter(|m| m.kind() == MesgNum::Record)
+        .filter_map(|m| {
+            let sample = Sample {
+                power_w: int(m, "power").and_then(|v| v.try_into().ok()),
+                heart_rate_bpm: int(m, "heart_rate").and_then(|v| v.try_into().ok()),
+                cadence_rpm: int(m, "cadence").and_then(|v| v.try_into().ok()),
+                // Older devices write 16-bit `altitude` and `speed`, which
+                // fitparser expands into the `enhanced_` fields.
+                altitude_m: float(m, "enhanced_altitude"),
+                speed_m_s: float(m, "enhanced_speed"),
+                distance_m: float(m, "distance"),
+            };
+            Some((instant(m, "timestamp")?, sample))
+        })
+        .collect()
+}
+
+/// FIT `event` number of the timer, and the `event_type` numbers that start
+/// it and stop it (stop, stop_all, stop_disable, stop_disable_all).
+const TIMER_EVENT: i64 = 0;
+const TIMER_START: i64 = 0;
+const TIMER_STOPS: [i64; 4] = [1, 4, 8, 9];
+
+/// The timer starts and stops, auto-pause included.
+fn timer_events(messages: &[FitDataRecord]) -> Vec<(DateTime<Utc>, Timer)> {
+    messages
+        .iter()
+        .filter(|m| m.kind() == MesgNum::Event && int(m, "event") == Some(TIMER_EVENT))
+        .filter_map(|m| {
+            let event = match int(m, "event_type")? {
+                TIMER_START => Timer::Start,
+                t if TIMER_STOPS.contains(&t) => Timer::Stop,
+                _ => return None,
+            };
+            Some((instant(m, "timestamp")?, event))
+        })
+        .collect()
 }
 
 /// FIT `sport` number of cycling, whatever the terrain. `e_biking` is a sport
@@ -116,6 +177,10 @@ fn value<'a>(message: &'a FitDataRecord, name: &str) -> Option<&'a Value> {
 
 fn int(message: &FitDataRecord, name: &str) -> Option<i64> {
     value(message, name).and_then(|v| v.try_into().ok())
+}
+
+fn float(message: &FitDataRecord, name: &str) -> Option<f64> {
+    value(message, name).and_then(|v| v.clone().try_into().ok())
 }
 
 /// A FIT `date_time` field, which counts UTC seconds.

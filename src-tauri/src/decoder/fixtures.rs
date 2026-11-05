@@ -10,7 +10,7 @@ use rustyfit::profile::typedef::{File, FitBaseType, MesgNum};
 use rustyfit::proto::{FIT, Field, Message, Value};
 use std::io::Cursor;
 
-pub use rustyfit::profile::typedef::{Sport, SubSport};
+pub use rustyfit::profile::typedef::{Event, EventType, Sport, SubSport};
 
 /// FIT timestamps count seconds from 1989-12-31T00:00:00Z.
 const FIT_EPOCH_UNIX: i64 = 631_065_600;
@@ -168,6 +168,64 @@ impl FitBuilder {
             ));
         }
         self.messages.push(message(MesgNum::RECORD, fields));
+        self
+    }
+
+    /// A timer `event` message: start, stop, stop_all…
+    pub fn timer(self, at: DateTime<Utc>, event_type: EventType) -> Self {
+        self.event(at, Event::TIMER, event_type)
+    }
+
+    /// An `event` message of any kind: timer, lap…
+    pub fn event(mut self, at: DateTime<Utc>, event: Event, event_type: EventType) -> Self {
+        self.messages.push(message(
+            MesgNum::EVENT,
+            vec![
+                field(
+                    mesgdef::Event::TIMESTAMP,
+                    FitBaseType::UINT32,
+                    Value::Uint32(fit_time(at)),
+                ),
+                field(
+                    mesgdef::Event::EVENT,
+                    FitBaseType::ENUM,
+                    Value::Uint8(event.0),
+                ),
+                field(
+                    mesgdef::Event::EVENT_TYPE,
+                    FitBaseType::ENUM,
+                    Value::Uint8(event_type.0),
+                ),
+            ],
+        ));
+        self
+    }
+
+    /// A `record` message with the 16-bit `altitude` and `speed` fields older
+    /// devices write instead of the `enhanced_` ones.
+    pub fn legacy_record(mut self, at: DateTime<Utc>, altitude_m: f64, speed_m_s: f64) -> Self {
+        let raw =
+            |v: f64, scale: f64, offset: f64| Value::Uint16(((v + offset) * scale).round() as u16);
+        self.messages.push(message(
+            MesgNum::RECORD,
+            vec![
+                field(
+                    mesgdef::Record::TIMESTAMP,
+                    FitBaseType::UINT32,
+                    Value::Uint32(fit_time(at)),
+                ),
+                field(
+                    mesgdef::Record::ALTITUDE,
+                    FitBaseType::UINT16,
+                    raw(altitude_m, 5.0, 500.0),
+                ),
+                field(
+                    mesgdef::Record::SPEED,
+                    FitBaseType::UINT16,
+                    raw(speed_m_s, 1000.0, 0.0),
+                ),
+            ],
+        ));
         self
     }
 

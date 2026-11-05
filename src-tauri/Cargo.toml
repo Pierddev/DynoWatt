@@ -28,6 +28,7 @@ rusqlite_migration = "2.6"
 chrono = "0.4"
 fitparser = "0.12"
 sha2 = "0.11"
+tauri-plugin-dialog = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

@@ -2,7 +2,7 @@
 //! about `fitparser` (ADR 0003): swapping decoder touches nothing else.
 
 #[cfg(test)]
-mod fixtures;
+pub(crate) mod fixtures;
 #[cfg(test)]
 mod tests;
 mod timeline;

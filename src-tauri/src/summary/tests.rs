@@ -1,7 +1,7 @@
 use chrono::{Duration, TimeZone, Utc};
 
 use super::*;
-use crate::decoder::fixtures::{FitBuilder, Point, Sport, SubSport, Totals};
+use crate::decoder::fixtures::{EventType, FitBuilder, Point, Sport, SubSport, Totals};
 use crate::decoder::{Sample, decode};
 
 /// A second of a Gap.
@@ -35,25 +35,34 @@ fn heart_rate(bpm: u8) -> Option<Sample> {
 }
 
 #[test]
-fn elapsed_time_counts_every_second_gaps_included() {
+fn elapsed_time_runs_from_the_first_sample_to_the_last_gaps_included() {
     assert_eq!(
         summary(vec![power(100), GAP, GAP, power(100)]).elapsed_time_s,
-        4
-    );
-}
-
-#[test]
-fn moving_time_is_elapsed_time_minus_the_gaps() {
-    assert_eq!(
-        summary(vec![power(100), GAP, GAP, power(100), power(100)]).moving_time_s,
         3
     );
 }
 
 #[test]
-fn a_single_sample_lasts_one_second() {
+fn moving_time_is_elapsed_time_minus_the_gaps() {
+    // The Gap runs from the Sample before it, at 2 s, to the one after it, at
+    // 5 s.
+    let seconds = vec![
+        power(100),
+        power(100),
+        power(100),
+        GAP,
+        GAP,
+        power(100),
+        power(100),
+    ];
+    let summary = summary(seconds);
+    assert_eq!((summary.elapsed_time_s, summary.moving_time_s), (6, 3));
+}
+
+#[test]
+fn a_single_sample_lasts_no_time() {
     let summary = summary(vec![Some(Sample::default())]);
-    assert_eq!((summary.elapsed_time_s, summary.moving_time_s), (1, 1));
+    assert_eq!((summary.elapsed_time_s, summary.moving_time_s), (0, 0));
 }
 
 #[test]
@@ -274,6 +283,38 @@ fn without_a_session_message_the_samples_give_distance_and_elevation_gain() {
         (summary.distance_m, summary.elevation_gain_m),
         (Some(8.0), Some(4.0))
     );
+}
+
+#[test]
+fn moving_time_is_the_timer_time_when_each_timer_stop_and_start_has_a_record() {
+    let start = Utc.with_ymd_and_hms(2026, 6, 1, 7, 0, 0).unwrap();
+    let at = |s| start + Duration::seconds(s);
+    // Running from 0 to 10 s and from 15 to 40 s, with a record at each end,
+    // as Garmin devices write them: 35 s of timer time. The pause is shorter
+    // than a hole the decoder fills, so only the timer makes it a Gap.
+    let mut fit = FitBuilder::new().session(Sport::CYCLING, SubSport::ROAD);
+    for running in [0..=10, 15..=40] {
+        fit = fit.timer(at(*running.start()), EventType::START);
+        for s in running.clone() {
+            let point = Point {
+                power_w: Some(200),
+                ..Default::default()
+            };
+            fit = fit.record(at(s), point);
+        }
+        fit = fit.timer(at(*running.end()), EventType::STOP_ALL);
+    }
+
+    let summary = summary_of(&fit.build());
+
+    assert_eq!((summary.elapsed_time_s, summary.moving_time_s), (40, 35));
+}
+
+#[test]
+fn summaries_of_version_1_are_stale() {
+    // Version 1 counted each record as a second, so each running stretch
+    // lasted one second too long.
+    const { assert!(SUMMARY_VERSION > 1) };
 }
 
 #[test]

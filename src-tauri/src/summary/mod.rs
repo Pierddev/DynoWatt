@@ -9,7 +9,7 @@ use crate::decoder::{DeviceTotals, Timeline};
 /// Version of the rules below, stored with each summary. Bump it whenever
 /// they change, so summaries computed by older rules can be recomputed from
 /// their Source File.
-pub const SUMMARY_VERSION: u32 = 1;
+pub const SUMMARY_VERSION: u32 = 2;
 
 /// The headline figures of an Activity. A figure whose sensor was missing is
 /// `None`, never `0`: a ride without a power meter has no Average Power.
@@ -17,9 +17,13 @@ pub const SUMMARY_VERSION: u32 = 1;
 pub struct ActivitySummary {
     /// The [`SUMMARY_VERSION`] that computed it.
     pub version: u32,
-    /// Elapsed Time, in seconds: every second of the timeline, Gaps included.
+    /// Elapsed Time, in seconds: from the first Sample to the last, Gaps
+    /// included.
     pub elapsed_time_s: u32,
-    /// Moving Time, in seconds: Elapsed Time minus the Gaps.
+    /// Moving Time, in seconds: Elapsed Time minus the Gaps, each one from
+    /// the Sample before it to the Sample after it. Across a timer pause that
+    /// is the time the timer was stopped, since the device writes a record as
+    /// its timer stops and another as it starts again.
     pub moving_time_s: u32,
     /// In metres.
     pub distance_m: Option<f64>,
@@ -37,10 +41,18 @@ pub struct ActivitySummary {
 /// consistent with the metrics built on them (MMP, NP).
 pub fn summarize(timeline: &Timeline, device: &DeviceTotals) -> ActivitySummary {
     let samples = || timeline.seconds.iter().flatten();
+    // A record is an instant, not a one-second slice: time is the steps from
+    // each second of the timeline to the next, not the seconds themselves.
+    let steps = || timeline.seconds.windows(2);
     ActivitySummary {
         version: SUMMARY_VERSION,
-        elapsed_time_s: seconds(timeline.seconds.len()),
-        moving_time_s: seconds(samples().count()),
+        elapsed_time_s: seconds(steps().count()),
+        // A step into or out of a Gap is part of the Gap.
+        moving_time_s: seconds(
+            steps()
+                .filter(|step| matches!(step, [Some(_), Some(_)]))
+                .count(),
+        ),
         // The cumulative distance of the last Sample that has one.
         distance_m: device_or(
             device.distance_m,

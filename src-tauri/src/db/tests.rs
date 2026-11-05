@@ -309,6 +309,113 @@ fn an_incomplete_file_id_never_matches() {
     assert_eq!(find_duplicate(&conn, &partial, "new-bytes").unwrap(), None);
 }
 
+/// The Activities [`find_overlapping`] finds between two RFC 3339 instants.
+fn overlapping(conn: &Connection, start: &str, end: &str) -> Vec<ActivityId> {
+    ids(&find_overlapping(conn, DEFAULT_ATHLETE, at(start), at(end)).unwrap())
+}
+
+#[test]
+fn an_activity_overlapping_the_range_is_found_whole() {
+    let conn = open_in_memory().unwrap();
+    // Rides from 07:00:00 for 3700 s, through 08:01:39.
+    let id = insert_activity(&conn, &record(1)).unwrap();
+
+    let found = find_overlapping(
+        &conn,
+        DEFAULT_ATHLETE,
+        at("2026-05-02T07:30:00Z"),
+        at("2026-05-02T09:00:00Z"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        found,
+        [Activity {
+            id,
+            record: record(1)
+        }]
+    );
+}
+
+#[test]
+fn ranges_that_only_touch_do_not_overlap() {
+    let conn = open_in_memory().unwrap();
+    // Rides from 07:00:00 for 3700 s, through 08:01:39.
+    let id = insert_activity(&conn, &record(1)).unwrap();
+
+    assert_eq!(
+        overlapping(&conn, "2026-05-02T08:01:40Z", "2026-05-02T09:00:00Z"),
+        []
+    );
+    assert_eq!(
+        overlapping(&conn, "2026-05-02T08:01:39Z", "2026-05-02T09:00:00Z"),
+        [id]
+    );
+    assert_eq!(
+        overlapping(&conn, "2026-05-02T06:00:00Z", "2026-05-02T07:00:00Z"),
+        []
+    );
+    assert_eq!(
+        overlapping(&conn, "2026-05-02T06:00:00Z", "2026-05-02T07:00:01Z"),
+        [id]
+    );
+}
+
+#[test]
+fn a_range_within_an_activity_overlaps_it() {
+    let conn = open_in_memory().unwrap();
+    let id = insert_activity(&conn, &record(1)).unwrap();
+
+    assert_eq!(
+        overlapping(&conn, "2026-05-02T07:10:00Z", "2026-05-02T07:20:00Z"),
+        [id]
+    );
+}
+
+#[test]
+fn overlapping_activities_are_listed_oldest_first() {
+    let conn = open_in_memory().unwrap();
+    let later = insert_activity(
+        &conn,
+        &ActivityRecord {
+            start_utc: at("2026-05-02T07:30:00Z"),
+            ..record(2)
+        },
+    )
+    .unwrap();
+    let earlier = insert_activity(&conn, &record(1)).unwrap();
+    // Two days later: out of the range.
+    insert_activity(&conn, &record(3)).unwrap();
+
+    assert_eq!(
+        overlapping(&conn, "2026-05-02T07:00:00Z", "2026-05-02T09:00:00Z"),
+        [earlier, later]
+    );
+}
+
+#[test]
+fn only_the_given_athletes_activities_overlap() {
+    let conn = open_in_memory().unwrap();
+    conn.execute(
+        "INSERT INTO athlete (id, name, created_at) VALUES (2, 'Other', '2026-01-01T00:00:00Z')",
+        [],
+    )
+    .unwrap();
+    insert_activity(
+        &conn,
+        &ActivityRecord {
+            athlete_id: AthleteId(2),
+            ..record(1)
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        overlapping(&conn, "2026-05-02T07:00:00Z", "2026-05-02T09:00:00Z"),
+        []
+    );
+}
+
 #[test]
 fn activities_are_listed_newest_first() {
     let conn = open_in_memory().unwrap();

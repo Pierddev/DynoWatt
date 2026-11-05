@@ -14,6 +14,9 @@ importers:
       '@tauri-apps/plugin-dialog':
         specifier: ^2.8.4
         version: 2.8.4
+      uplot:
+        specifier: ^1.6.32
+        version: 1.6.32
       vue:
         specifier: ^3.5.13
         version: 3.5.44(typescript@6.0.3)
@@ -661,6 +664,9 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  uplot@1.6.32:
+    resolution: {integrity: sha512-KIMVnG68zvu5XXUbC4LQEPnhwOxBuLyW1AHtpm6IKTXImkbLgkMy+jabjLgSLMasNuGGzQm/ep3tOkyTxpiQIw==}
+
   vite@8.3.5:
     resolution: {integrity: sha512-z1YpjieJ9g0ebTmQpLBv/oq9E3F9EIlOe+7LahW8SrE3LTiG3udBRUXQOlYXP9b+IC2q2phHeVxj9xGlw34OEQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -1276,6 +1282,8 @@ snapshots:
       picomatch: 4.0.7
 
   typescript@6.0.3: {}
+
+  uplot@1.6.32: {}
 
   vite@8.3.5(jiti@2.7.0):
     dependencies:

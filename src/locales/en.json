@@ -9,6 +9,7 @@
     "column": {
       "start": "Date",
       "type": "Type",
+      "elapsedTime": "Elapsed time",
       "movingTime": "Moving time",
       "distance": "Distance",
       "elevationGain": "Elevation gain",
@@ -22,7 +23,29 @@
       "km": "{value} km",
       "m": "{value} m",
       "watts": "{value} W",
-      "bpm": "{value} bpm"
+      "bpm": "{value} bpm",
+      "rpm": "{value} rpm",
+      "kmh": "{value} km/h"
+    }
+  },
+  "detail": {
+    "back": "Activities",
+    "loading": "Loading the telemetry…",
+    "loadError": "The telemetry could not be loaded: {reason}"
+  },
+  "telemetry": {
+    "title": "Telemetry",
+    "none": "This activity has no power, heart rate, cadence, altitude or speed to chart.",
+    "time": "At {value}",
+    "hint": "Ctrl + scroll or pinch to zoom, drag to pan, double-click for the whole ride.",
+    "reset": "Reset zoom",
+    "chart": "{channel} over time",
+    "channel": {
+      "power": "Power",
+      "heartRate": "Heart rate",
+      "cadence": "Cadence",
+      "altitude": "Altitude",
+      "speed": "Speed"
     }
   },
   "import": {

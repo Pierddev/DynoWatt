@@ -526,3 +526,58 @@ fn a_folder_that_cannot_be_listed_is_reported_unreadable() {
         Outcome::Unreadable { .. }
     ));
 }
+
+#[test]
+fn the_report_reaches_the_frontend_as_camel_case_json() {
+    let report = ImportReport {
+        files: vec![
+            FileReport {
+                path: "/rides/a.fit".to_owned(),
+                outcome: Outcome::Imported {
+                    activity_id: 3,
+                    overlaps: vec!["2026/2026-06-01_0900_01234567.fit".to_owned()],
+                },
+            },
+            FileReport {
+                path: "/rides/b.fit".to_owned(),
+                outcome: Outcome::Duplicate { activity_id: 1 },
+            },
+            FileReport {
+                path: "/rides/c.fit".to_owned(),
+                outcome: Outcome::NotCycling,
+            },
+            FileReport {
+                path: "/rides/d.fit".to_owned(),
+                outcome: Outcome::Unreadable {
+                    reason: "garbled".to_owned(),
+                },
+            },
+            FileReport {
+                path: "/rides/e.fit".to_owned(),
+                outcome: Outcome::Failed {
+                    reason: "disk full".to_owned(),
+                },
+            },
+        ],
+    };
+
+    assert_eq!(
+        serde_json::to_value(&report).unwrap(),
+        serde_json::json!({
+            "files": [
+                {
+                    "path": "/rides/a.fit",
+                    "outcome": {
+                        "kind": "imported",
+                        "activityId": 3,
+                        "overlaps": ["2026/2026-06-01_0900_01234567.fit"]
+                    }
+                },
+                {"path": "/rides/b.fit", "outcome": {"kind": "duplicate", "activityId": 1}},
+                {"path": "/rides/c.fit", "outcome": {"kind": "notCycling"}},
+                {"path": "/rides/d.fit", "outcome": {"kind": "unreadable", "reason": "garbled"}},
+                {"path": "/rides/e.fit", "outcome": {"kind": "failed", "reason": "disk full"}}
+            ]
+        })
+    );
+}

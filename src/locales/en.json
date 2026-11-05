@@ -4,5 +4,37 @@
   },
   "activities": {
     "empty": "No activities yet. Import a .FIT file to get started."
+  },
+  "import": {
+    "files": "Import files",
+    "folder": "Import folder",
+    "fitFiles": "FIT files",
+    "dropHint": "You can also drop .FIT files or folders onto this window.",
+    "dropHere": "Drop to import",
+    "running": "Importing…",
+    "error": "The import could not run: {reason}"
+  },
+  "importReport": {
+    "title": "Import report",
+    "close": "Close",
+    "counts": "Outcomes",
+    "count": {
+      "imported": "{n} imported",
+      "duplicate": "{n} duplicate | {n} duplicates",
+      "notCycling": "{n} not cycling",
+      "unreadable": "{n} unreadable",
+      "failed": "{n} failed"
+    },
+    "note": {
+      "nothingFound": "No .FIT file found.",
+      "allDuplicates": "Every file was already imported."
+    },
+    "outcome": {
+      "imported": "Imported",
+      "notCycling": "Rejected: not cycling",
+      "unreadable": "Rejected: unreadable",
+      "failed": "Failed"
+    },
+    "overlaps": "Overlaps an activity already imported, maybe the same ride recorded on another device: | Overlaps {n} activities already imported, maybe the same ride recorded on other devices:"
   }
 }

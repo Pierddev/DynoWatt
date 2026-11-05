@@ -9,8 +9,9 @@ mod timeline;
 
 use std::collections::HashSet;
 use std::fmt;
+use std::ops::RangeInclusive;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, NaiveDate, Offset, TimeZone, Utc};
 use fitparser::de::{DecodeOption, from_bytes_with_options};
 use fitparser::profile::MesgNum;
 use fitparser::{FitDataRecord, Value};
@@ -31,6 +32,8 @@ pub struct DecodedActivity {
     pub content_hash: String,
     /// Ridden on a home trainer.
     pub is_indoor: bool,
+    /// Offset from UTC, in seconds, of the local time where the ride happened.
+    pub utc_offset_s: i32,
     /// The Samples, one per second, with Gaps; starts at the Activity's start.
     pub timeline: Timeline,
 }
@@ -57,8 +60,14 @@ impl fmt::Display for DecodeError {
 
 impl std::error::Error for DecodeError {}
 
-/// Decodes the bytes of a Source File.
+/// Decodes the bytes of a Source File. When the file does not say where the
+/// ride happened, the machine's time zone stands in.
 pub fn decode(bytes: &[u8]) -> Result<DecodedActivity, DecodeError> {
+    decode_in(bytes, &Local)
+}
+
+/// [`decode`], with `machine` as the time zone to fall back on.
+fn decode_in(bytes: &[u8], machine: &impl TimeZone) -> Result<DecodedActivity, DecodeError> {
     // Enums come back as their FIT numbers, not as names that may change
     // between profile versions.
     let options = HashSet::from([DecodeOption::ReturnNumericEnumValues]);
@@ -78,12 +87,47 @@ pub fn decode(bytes: &[u8]) -> Result<DecodedActivity, DecodeError> {
     if sport != CYCLING {
         return Err(DecodeError::NotCycling);
     }
+    let utc_offset_s = recorded_utc_offset(&messages).unwrap_or_else(|| {
+        machine
+            .offset_from_utc_datetime(&timeline.start_utc.naive_utc())
+            .fix()
+            .local_minus_utc()
+    });
     Ok(DecodedActivity {
         fit_file_id: file_id(&messages),
         content_hash: content_hash(bytes),
         is_indoor: sub_sport.is_some_and(|s| INDOOR_SUB_SPORTS.contains(&s)),
+        utc_offset_s,
         timeline,
     })
+}
+
+/// FIT counts time from 1989-12-31T00:00:00, in UTC for a `date_time` and in
+/// local time for a `local_date_time`.
+const FIT_EPOCH_UNIX: i64 = 631_065_600;
+
+/// The offsets time zones use, from UTC−12:00 to UTC+14:00.
+const UTC_OFFSETS_S: RangeInclusive<i64> = -12 * 3600..=14 * 3600;
+
+/// Where the ride happened, from the `activity` message: its local timestamp
+/// minus its UTC one, rounded to the quarter hour all time zones use, since a
+/// device may write the two a second apart. `None` when the file does not
+/// say, or says something no time zone uses.
+fn recorded_utc_offset(messages: &[FitDataRecord]) -> Option<i32> {
+    let activity = messages.iter().find(|m| m.kind() == MesgNum::Activity)?;
+    let utc = int(activity, "timestamp")? - FIT_EPOCH_UNIX;
+    let local = int(activity, "local_timestamp")? - fitparser_local_epoch()?;
+    let offset = (local - utc + 450).div_euclid(900) * 900;
+    UTC_OFFSETS_S
+        .contains(&offset)
+        .then(|| i32::try_from(offset).ok())?
+}
+
+/// fitparser reads a `local_date_time` as counting from the FIT epoch in the
+/// machine's time zone; this is that epoch, as a Unix timestamp.
+fn fitparser_local_epoch() -> Option<i64> {
+    let epoch = NaiveDate::from_ymd_opt(1989, 12, 31)?.and_hms_opt(0, 0, 0)?;
+    Some(Local.from_local_datetime(&epoch).single()?.timestamp())
 }
 
 /// The `record` messages that carry a timestamp, with their values.

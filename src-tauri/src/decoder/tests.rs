@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Local, Offset, TimeZone, Utc};
 
 use super::fixtures::{Event, EventType, FileId, FitBuilder, Point, Sport, SubSport};
 use super::*;
@@ -532,6 +532,63 @@ fn records_spread_over_more_than_a_week_are_unreadable() {
         .record(at(timeline::MAX_TIMELINE_S + 1), power(200))
         .build();
     assert!(is_unreadable(decode(&bytes)));
+}
+
+const HOUR: i64 = 3600;
+
+/// The UTC offset `decode` finds in a ride whose `activity` message puts local
+/// time `recorded_s` ahead of UTC, on a machine at UTC+01:00.
+fn utc_offset_of(recorded_s: Option<i64>) -> i32 {
+    let mut file = ride();
+    if let Some(offset) = recorded_s {
+        file = file.activity(at(2 * HOUR), offset);
+    }
+    let machine = FixedOffset::east_opt(3600).unwrap();
+    decode_in(&file.build(), &machine)
+        .expect("a decodable file")
+        .utc_offset_s
+}
+
+#[test]
+fn the_utc_offset_comes_from_the_activity_local_timestamp() {
+    for offset in [2 * HOUR, -5 * HOUR, 5 * HOUR + 1800, 0] {
+        assert_eq!(utc_offset_of(Some(offset)), offset as i32);
+    }
+}
+
+#[test]
+fn a_local_timestamp_a_few_seconds_off_rounds_to_the_quarter_hour() {
+    assert_eq!(utc_offset_of(Some(2 * HOUR + 2)), 7200);
+    assert_eq!(utc_offset_of(Some(2 * HOUR - 3)), 7200);
+    assert_eq!(utc_offset_of(Some(-5 * HOUR - 2)), -18000);
+    assert_eq!(utc_offset_of(Some(2 * HOUR + 449)), 7200);
+    assert_eq!(utc_offset_of(Some(2 * HOUR + 450)), 8100);
+}
+
+#[test]
+fn the_widest_time_zones_are_kept() {
+    assert_eq!(utc_offset_of(Some(14 * HOUR)), 14 * 3600);
+    assert_eq!(utc_offset_of(Some(-12 * HOUR)), -12 * 3600);
+}
+
+#[test]
+fn an_offset_no_time_zone_uses_falls_back_to_the_machine() {
+    assert_eq!(utc_offset_of(Some(14 * HOUR + 900)), 3600);
+    assert_eq!(utc_offset_of(Some(-12 * HOUR - 900)), 3600);
+}
+
+#[test]
+fn without_an_activity_message_the_machine_time_zone_applies() {
+    assert_eq!(utc_offset_of(None), 3600);
+}
+
+#[test]
+fn decode_falls_back_to_this_machines_time_zone() {
+    let expected = Local.offset_from_utc_datetime(&at(0).naive_utc()).fix();
+    assert_eq!(
+        decoded(&ride().build()).utc_offset_s,
+        expected.local_minus_utc()
+    );
 }
 
 /// ADR 0003: swapping decoder must touch only this module.

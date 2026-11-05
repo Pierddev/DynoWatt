@@ -118,6 +118,28 @@ impl FitBuilder {
         self
     }
 
+    /// An `activity` message whose local timestamp is `utc_offset_s` ahead of
+    /// its UTC timestamp.
+    pub fn activity(mut self, at: DateTime<Utc>, utc_offset_s: i64) -> Self {
+        let local = i64::from(fit_time(at)) + utc_offset_s;
+        self.messages.push(message(
+            MesgNum::ACTIVITY,
+            vec![
+                field(
+                    mesgdef::Activity::TIMESTAMP,
+                    FitBaseType::UINT32,
+                    Value::Uint32(fit_time(at)),
+                ),
+                field(
+                    mesgdef::Activity::LOCAL_TIMESTAMP,
+                    FitBaseType::UINT32,
+                    Value::Uint32(u32::try_from(local).expect("a local time after the FIT epoch")),
+                ),
+            ],
+        ));
+        self
+    }
+
     /// A `record` message at `at`.
     pub fn record(mut self, at: DateTime<Utc>, point: Point) -> Self {
         let mut fields = vec![field(

@@ -1,13 +1,26 @@
 <script setup lang="ts">
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { onBeforeUnmount, onMounted } from "vue";
+import { computed, onBeforeUnmount, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
+import { listActivities } from "./activities/commands";
+import { useActivities } from "./activities/useActivities";
+import ActivityList from "./components/ActivityList.vue";
 import ImportReport from "./components/ImportReport.vue";
 import { importPaths, pickFiles, pickFolders } from "./import/commands";
 import { useImport } from "./import/useImport";
 
 const { t } = useI18n();
-const { running, dragging, report, error, pick, onDragDrop, dismiss } = useImport(importPaths);
+const { activities, error: listError, load } = useActivities(listActivities);
+const { running, dragging, report, error, pick, onDragDrop, dismiss } = useImport(async (paths) => {
+  const imported = await importPaths(paths);
+  // The list shows what the run imported along with its Import Report.
+  void load();
+  return imported;
+});
+void load();
+
+// Centred only while the main area holds a short message, not a list or a report.
+const centred = computed(() => !activities.value?.length && (running.value || !report.value));
 
 // Files dropped anywhere on the window: the webview catches the drop, not the DOM.
 let stopDragDrop: (() => void) | undefined;
@@ -49,14 +62,18 @@ const BUTTON =
     </header>
     <main
       class="flex flex-1 flex-col items-center gap-4 overflow-y-auto p-6"
-      :class="report && !running ? 'justify-start' : 'justify-center'"
+      :class="centred ? 'justify-center' : 'justify-start'"
     >
       <p v-if="error" role="alert" class="text-red-700 dark:text-red-400">
         {{ t("import.error", { reason: error }) }}
       </p>
+      <p v-if="listError" role="alert" class="text-red-700 dark:text-red-400">
+        {{ t("activities.loadError", { reason: listError }) }}
+      </p>
       <p v-if="running" role="status" class="text-neutral-500 dark:text-neutral-400">{{ t("import.running") }}</p>
       <ImportReport v-else-if="report" :report="report" @close="dismiss" />
-      <div v-else class="text-center text-neutral-500 dark:text-neutral-400">
+      <ActivityList v-if="activities?.length" :activities="activities" />
+      <div v-else-if="activities && !running && !report" class="text-center text-neutral-500 dark:text-neutral-400">
         <p>{{ t("activities.empty") }}</p>
         <p class="mt-1 text-sm">{{ t("import.dropHint") }}</p>
       </div>

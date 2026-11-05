@@ -30,7 +30,7 @@ const TONE: Record<OutcomeKind, string> = {
 <template>
   <section
     aria-labelledby="import-report-title"
-    class="w-full max-w-3xl rounded-lg border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-800"
+    class="w-full max-w-5xl rounded-lg border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-800"
   >
     <header
       class="flex items-center justify-between gap-4 border-b border-neutral-200 px-4 py-3 dark:border-neutral-700"

@@ -158,6 +158,34 @@ pub fn find_duplicate(
     .optional()
 }
 
+/// The Athlete's Activities whose time range, from their start through their
+/// Elapsed Time, overlaps `start..end`, oldest first: the same ride recorded
+/// on two devices. Ranges are half-open, so a ride starting the second
+/// another ends does not overlap it.
+pub fn find_overlapping(
+    conn: &Connection,
+    athlete_id: AthleteId,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+) -> rusqlite::Result<Vec<Activity>> {
+    conn.prepare(
+        "SELECT * FROM activity
+         WHERE athlete_id = :athlete_id
+           AND start_utc < :end
+           AND unixepoch(start_utc) + elapsed_time_s > unixepoch(:start)
+         ORDER BY start_utc, id",
+    )?
+    .query_map(
+        named_params! {
+            ":athlete_id": athlete_id.0,
+            ":start": SqlTime(start),
+            ":end": SqlTime(end),
+        },
+        read_activity,
+    )?
+    .collect()
+}
+
 /// The Athlete's Activities, newest first.
 pub fn list_activities(
     conn: &Connection,

@@ -2,8 +2,10 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { toRow, type ListedActivity } from "../activities/list";
+import ActivityType from "./ActivityType.vue";
 
 const props = defineProps<{ activities: ListedActivity[] }>();
+const emit = defineEmits<{ open: [id: number] }>();
 const i18n = useI18n();
 const { t } = i18n;
 
@@ -31,22 +33,25 @@ const FIGURES = ["movingTime", "distance", "elevationGain", "averagePower", "ave
           </tr>
         </thead>
         <tbody class="divide-y divide-neutral-200 dark:divide-neutral-700">
-          <tr v-for="row in rows" :key="row.id">
+          <!-- The whole row opens the detail; its date is the button keyboards reach. -->
+          <tr
+            v-for="row in rows"
+            :key="row.id"
+            class="cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700/40"
+            @click="emit('open', row.id)"
+          >
             <td class="px-4 py-3 whitespace-nowrap">
-              <!-- One line, so a space separates the date from the time when read or copied. -->
-              <span class="font-medium">{{ row.date }}</span> <span class="ml-1 text-neutral-500 tabular-nums dark:text-neutral-400">{{ row.time }}</span>
+              <button
+                :id="`activity-${row.id}`"
+                type="button"
+                class="rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-500"
+              >
+                <!-- One line, so a space separates the date from the time when read or copied. -->
+                <span class="font-medium">{{ row.date }}</span> <span class="ml-1 text-neutral-500 tabular-nums dark:text-neutral-400">{{ row.time }}</span>
+              </button>
             </td>
             <td class="px-4 py-3">
-              <span
-                class="rounded-full px-2 py-0.5 text-xs font-medium"
-                :class="
-                  row.isIndoor
-                    ? 'bg-sky-50 text-sky-800 dark:bg-sky-400/10 dark:text-sky-300'
-                    : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200'
-                "
-              >
-                {{ row.type }}
-              </span>
+              <ActivityType :is-indoor="row.isIndoor" :label="row.type" />
             </td>
             <td v-for="figure in FIGURES" :key="figure" class="px-4 py-3 text-right whitespace-nowrap tabular-nums">
               {{ row[figure] }}

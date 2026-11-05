@@ -98,6 +98,26 @@ impl FitBuilder {
         self
     }
 
+    /// A `sport` message, the other place a sport can be recorded.
+    pub fn sport(mut self, sport: Sport, sub_sport: SubSport) -> Self {
+        self.messages.push(message(
+            MesgNum::SPORT,
+            vec![
+                field(
+                    mesgdef::Sport::SPORT,
+                    FitBaseType::ENUM,
+                    Value::Uint8(sport.0),
+                ),
+                field(
+                    mesgdef::Sport::SUB_SPORT,
+                    FitBaseType::ENUM,
+                    Value::Uint8(sub_sport.0),
+                ),
+            ],
+        ));
+        self
+    }
+
     /// A `record` message at `at`.
     pub fn record(mut self, at: DateTime<Utc>, point: Point) -> Self {
         let mut fields = vec![field(

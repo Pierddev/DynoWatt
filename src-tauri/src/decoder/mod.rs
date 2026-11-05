@@ -25,6 +25,8 @@ pub struct DecodedActivity {
     /// SHA-256 of the whole file, lowercase hex: the second key of Duplicate
     /// detection.
     pub content_hash: String,
+    /// Ridden on a home trainer.
+    pub is_indoor: bool,
 }
 
 /// Why a Source File cannot become an Activity.
@@ -32,12 +34,16 @@ pub struct DecodedActivity {
 pub enum DecodeError {
     /// Not a readable FIT file: failed CRC, truncated or garbled data.
     Unreadable(String),
+    /// A readable file recording something other than cycling, or no sport
+    /// at all.
+    NotCycling,
 }
 
 impl fmt::Display for DecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DecodeError::Unreadable(reason) => write!(f, "unreadable FIT file: {reason}"),
+            DecodeError::NotCycling => f.write_str("not a cycling activity"),
         }
     }
 }
@@ -51,9 +57,33 @@ pub fn decode(bytes: &[u8]) -> Result<DecodedActivity, DecodeError> {
     let options = HashSet::from([DecodeOption::ReturnNumericEnumValues]);
     let messages = from_bytes_with_options(bytes, &options)
         .map_err(|e| DecodeError::Unreadable(e.to_string()))?;
+    let (sport, sub_sport) = sport(&messages).ok_or(DecodeError::NotCycling)?;
+    if sport != CYCLING {
+        return Err(DecodeError::NotCycling);
+    }
     Ok(DecodedActivity {
         fit_file_id: file_id(&messages),
         content_hash: content_hash(bytes),
+        is_indoor: sub_sport.is_some_and(|s| INDOOR_SUB_SPORTS.contains(&s)),
+    })
+}
+
+/// FIT `sport` number of cycling, whatever the terrain. `e_biking` is a sport
+/// of its own and is rejected.
+const CYCLING: i64 = 2;
+
+/// FIT `sub_sport` numbers of rides on a home trainer: spin, indoor_cycling
+/// and virtual_activity.
+const INDOOR_SUB_SPORTS: [i64; 3] = [5, 6, 58];
+
+/// The sport and sub-sport of the first session, or of the first `sport`
+/// message when the file has no session.
+fn sport(messages: &[FitDataRecord]) -> Option<(i64, Option<i64>)> {
+    [MesgNum::Session, MesgNum::Sport].iter().find_map(|kind| {
+        messages
+            .iter()
+            .filter(|m| m.kind() == *kind)
+            .find_map(|m| Some((int(m, "sport")?, int(m, "sub_sport"))))
     })
 }
 

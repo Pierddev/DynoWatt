@@ -34,8 +34,21 @@ pub struct DecodedActivity {
     pub is_indoor: bool,
     /// Offset from UTC, in seconds, of the local time where the ride happened.
     pub utc_offset_s: i32,
+    /// What the device computed for the ride; unknown without a `session`
+    /// message.
+    pub device_totals: DeviceTotals,
     /// The Samples, one per second, with Gaps; starts at the Activity's start.
     pub timeline: Timeline,
+}
+
+/// The totals a device computed for the ride and wrote in its `session`
+/// message. Each is `None` when the device did not write it.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct DeviceTotals {
+    /// `total_distance`, in metres.
+    pub distance_m: Option<f64>,
+    /// `total_ascent`, in metres.
+    pub elevation_gain_m: Option<f64>,
 }
 
 /// Why a Source File cannot become an Activity.
@@ -98,8 +111,22 @@ fn decode_in(bytes: &[u8], machine: &impl TimeZone) -> Result<DecodedActivity, D
         content_hash: content_hash(bytes),
         is_indoor: sub_sport.is_some_and(|s| INDOOR_SUB_SPORTS.contains(&s)),
         utc_offset_s,
+        device_totals: device_totals(&messages),
         timeline,
     })
+}
+
+/// The totals of the first session, the one whose sport makes the file a
+/// ride.
+fn device_totals(messages: &[FitDataRecord]) -> DeviceTotals {
+    messages
+        .iter()
+        .find(|m| m.kind() == MesgNum::Session)
+        .map(|m| DeviceTotals {
+            distance_m: float(m, "total_distance"),
+            elevation_gain_m: float(m, "total_ascent"),
+        })
+        .unwrap_or_default()
 }
 
 /// FIT counts time from 1989-12-31T00:00:00, in UTC for a `date_time` and in

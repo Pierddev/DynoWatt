@@ -3,7 +3,16 @@
     "name": "DynoWatt"
   },
   "activities": {
-    "empty": "No activities yet. Import a .FIT file to get started."
+    "empty": "No activities yet. Import a .FIT file to get started.",
+    "road": "Road",
+    "indoor": "Indoor",
+    "missing": "—",
+    "unit": {
+      "km": "{value} km",
+      "m": "{value} m",
+      "watts": "{value} W",
+      "bpm": "{value} bpm"
+    }
   },
   "import": {
     "files": "Import files",

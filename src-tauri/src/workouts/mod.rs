@@ -6,7 +6,10 @@ mod tests;
 
 use std::ops::RangeInclusive;
 
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+
+use crate::db::{self, AthleteId, WorkoutId};
 
 /// A named, planned session: an ordered sequence of Steps and Repeats.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,4 +189,97 @@ fn step_faults(step: &Step) -> Vec<Rule> {
         }
     }
     rules
+}
+
+/// One Workout of the list, with its total duration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListedWorkout {
+    pub id: i64,
+    pub name: String,
+    /// Repeats unrolled.
+    pub duration_s: u64,
+}
+
+/// The Athlete's Workouts, in the order they were created: the window sorts
+/// them by name, as the Athlete's language does.
+pub fn list(conn: &Connection, athlete_id: AthleteId) -> rusqlite::Result<Vec<ListedWorkout>> {
+    Ok(db::list_workouts(conn, athlete_id)?
+        .into_iter()
+        .map(|(id, workout)| ListedWorkout {
+            id: id.0,
+            duration_s: workout.duration_s(),
+            name: workout.name,
+        })
+        .collect())
+}
+
+/// The Workout `id`.
+pub fn get(conn: &Connection, id: WorkoutId) -> Result<Workout, String> {
+    db::find_workout(conn, id)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| unknown(id))
+}
+
+/// Saves `workout`, its name trimmed, as a new Workout of the Athlete, unless
+/// it breaks a rule.
+pub fn create(
+    conn: &mut Connection,
+    athlete_id: AthleteId,
+    workout: Workout,
+) -> Result<WorkoutId, String> {
+    let workout = checked(workout)?;
+    db::insert_workout(conn, athlete_id, &workout).map_err(|err| err.to_string())
+}
+
+/// Replaces the Workout `id` with `workout`, its name trimmed, unless it
+/// breaks a rule.
+pub fn update(conn: &mut Connection, id: WorkoutId, workout: Workout) -> Result<(), String> {
+    let workout = checked(workout)?;
+    if db::update_workout(conn, id, &workout).map_err(|err| err.to_string())? {
+        Ok(())
+    } else {
+        Err(unknown(id))
+    }
+}
+
+/// Saves a copy of the Workout `id` named `name` for the Athlete. The window
+/// picks the name, so it can follow the Athlete's language.
+pub fn duplicate(
+    conn: &mut Connection,
+    athlete_id: AthleteId,
+    id: WorkoutId,
+    name: String,
+) -> Result<WorkoutId, String> {
+    let original = get(conn, id)?;
+    create(
+        conn,
+        athlete_id,
+        Workout {
+            name,
+            items: original.items,
+        },
+    )
+}
+
+pub fn delete(conn: &Connection, id: WorkoutId) -> Result<(), String> {
+    if db::delete_workout(conn, id).map_err(|err| err.to_string())? {
+        Ok(())
+    } else {
+        Err(unknown(id))
+    }
+}
+
+/// `workout` with its name trimmed, when it follows every rule.
+fn checked(mut workout: Workout) -> Result<Workout, String> {
+    workout.name = workout.name.trim().to_owned();
+    if validate(&workout).is_empty() {
+        Ok(workout)
+    } else {
+        Err("the Workout is not valid".to_owned())
+    }
+}
+
+fn unknown(id: WorkoutId) -> String {
+    format!("no Workout has the id {}", id.0)
 }

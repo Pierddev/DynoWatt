@@ -33,13 +33,22 @@ async function open(id: number) {
   main.value?.scrollTo({ top: 0 });
 }
 
-/** Back to the list, where it was left, the opened Activity focused. */
-async function back() {
-  const id = opened.value;
+/** Back to the list, where it was left, the row of the Activity `focused` focused. */
+async function showList(focused: number | undefined) {
   opened.value = null;
   await nextTick();
   main.value?.scrollTo({ top: listScroll });
-  document.getElementById(`activity-${id}`)?.focus();
+  if (focused !== undefined) document.getElementById(`activity-${focused}`)?.focus();
+}
+
+const back = () => showList(opened.value ?? undefined);
+
+/** Back to the list without the deleted Activity, the row that took its place focused. */
+async function deleted() {
+  const index = activities.value?.findIndex(({ id }) => id === opened.value) ?? -1;
+  await load();
+  const list = activities.value ?? [];
+  await showList(list[Math.min(index, list.length - 1)]?.id);
 }
 
 // Centred only while the main area holds a short message, not a list or a report.
@@ -96,7 +105,7 @@ const BUTTON =
       </p>
       <p v-if="running" role="status" class="text-neutral-500 dark:text-neutral-400">{{ t("import.running") }}</p>
       <ImportReport v-else-if="report" :report="report" @close="dismiss" />
-      <ActivityDetail v-if="openedActivity" :activity="openedActivity" @back="back" />
+      <ActivityDetail v-if="openedActivity" :activity="openedActivity" @back="back" @deleted="deleted" />
       <ActivityList v-else-if="activities?.length" :activities="activities" @open="open" />
       <div v-else-if="activities && !running && !report" class="text-center text-neutral-500 dark:text-neutral-400">
         <p>{{ t("activities.empty") }}</p>

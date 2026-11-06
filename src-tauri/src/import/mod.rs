@@ -166,7 +166,7 @@ fn store(
 /// Writes `bytes`, the very bytes that were hashed, to a new file at
 /// `target`, creating its folder. Never overwrites a file; removes a partly
 /// written one.
-fn write_new(target: &Path, bytes: &[u8]) -> io::Result<()> {
+pub(crate) fn write_new(target: &Path, bytes: &[u8]) -> io::Result<()> {
     if let Some(folder) = target.parent() {
         fs::create_dir_all(folder)?;
     }

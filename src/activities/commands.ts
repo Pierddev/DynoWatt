@@ -5,3 +5,8 @@ import type { ListedActivity } from "./list";
 export function listActivities(): Promise<ListedActivity[]> {
   return invoke<ListedActivity[]>("list_activities");
 }
+
+/** Deletes the Activity `id` together with its Source File in the Library: both, or neither. */
+export function deleteActivity(id: number): Promise<void> {
+  return invoke<void>("delete_activity", { id });
+}

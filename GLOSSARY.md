@@ -34,7 +34,7 @@ _Avoid_: Mean power, avg watts
 
 **Source File**:
 The original `.FIT` file an Activity was imported from, kept unmodified as the reference copy of its data.
-_Avoid_: Upload, raw file, track
+_Avoid_: Upload, raw file
 
 **Duplicate**:
 A Source File recognised as one already in the Library, even if its bytes differ (for example after re-export from another platform).
@@ -52,6 +52,10 @@ _Avoid_: Archive, storage, vault
 The values (power, heart rate, cadence, altitude, …) for one second of an Activity's timeline.
 _Avoid_: Record, point, datapoint, tick
 
+**Position**:
+Where the Athlete was at one second of an Activity, as latitude and longitude. Like every value of a Sample, it can be missing.
+_Avoid_: GPS point, coordinate, location, lat/lng
+
 **Gap**:
 A stretch of an Activity's timeline with no Sample, typically an auto-pause or a recording dropout. A Gap is absence of data, never zero power.
 _Avoid_: Pause, stop, zero
@@ -63,6 +67,10 @@ _Avoid_: Total time, duration
 **Moving Time**:
 Elapsed Time minus all Gaps; the duration shown for an Activity by default.
 _Avoid_: Ride time, active time, duration
+
+**Track**:
+The line an Activity's Positions draw on a map, in timeline order.
+_Avoid_: Route (a planned course), trace, path, GPS track
 
 ### Physiology
 

@@ -6,6 +6,7 @@ pub mod library;
 pub mod recompute;
 pub mod summary;
 pub mod telemetry;
+pub mod workouts;
 
 use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError};

@@ -2,11 +2,14 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
 import { useI18n } from "vue-i18n";
-import { listActivities } from "./activities/commands";
+import { listActivities, onRecomputeFinished, recomputeStatus } from "./activities/commands";
+import { stillListed } from "./activities/recompute";
 import { useActivities } from "./activities/useActivities";
+import { useRecompute } from "./activities/useRecompute";
 import ActivityDetail from "./components/ActivityDetail.vue";
 import ActivityList from "./components/ActivityList.vue";
 import ImportReport from "./components/ImportReport.vue";
+import RecomputeReport from "./components/RecomputeReport.vue";
 import { importPaths, pickFiles, pickFolders } from "./import/commands";
 import { useImport } from "./import/useImport";
 
@@ -20,6 +23,11 @@ const { running, dragging, report, error, pick, onDragDrop, dismiss } = useImpor
 });
 void load();
 
+// Stale summaries brought up to date in the background: new figures reload the list.
+const recompute = useRecompute(recomputeStatus, onRecomputeFinished, () => void load());
+const { running: recomputing, error: recomputeError, dismiss: dismissRecompute } = recompute;
+const skipped = computed(() => stillListed(recompute.skipped.value, activities.value ?? []));
+
 // The Activity whose detail shows in place of the list.
 const opened = ref<number | null>(null);
 const openedActivity = computed(() => activities.value?.find(({ id }) => id === opened.value) ?? null);
@@ -27,7 +35,8 @@ const main = useTemplateRef<HTMLElement>("main");
 let listScroll = 0;
 
 async function open(id: number) {
-  listScroll = main.value?.scrollTop ?? 0;
+  // From another detail, through the recompute report, the list stays where it was left.
+  if (opened.value === null) listScroll = main.value?.scrollTop ?? 0;
   opened.value = id;
   await nextTick();
   main.value?.scrollTo({ top: 0 });
@@ -59,7 +68,14 @@ let stopDragDrop: (() => void) | undefined;
 onMounted(async () => {
   stopDragDrop = await getCurrentWebview().onDragDropEvent(({ payload }) => onDragDrop(payload));
 });
-onBeforeUnmount(() => stopDragDrop?.());
+let stopRecompute: (() => void) | undefined;
+onMounted(async () => {
+  stopRecompute = await recompute.follow();
+});
+onBeforeUnmount(() => {
+  stopDragDrop?.();
+  stopRecompute?.();
+});
 
 const BUTTON =
   "rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-500 disabled:cursor-not-allowed disabled:opacity-50";
@@ -103,8 +119,13 @@ const BUTTON =
       <p v-if="listError" role="alert" class="text-red-700 dark:text-red-400">
         {{ t("activities.loadError", { reason: listError }) }}
       </p>
+      <p v-if="recomputeError" role="alert" class="text-red-700 dark:text-red-400">
+        {{ t("recompute.error", { reason: recomputeError }) }}
+      </p>
+      <p v-if="recomputing" role="status" class="text-neutral-500 dark:text-neutral-400">{{ t("recompute.running") }}</p>
       <p v-if="running" role="status" class="text-neutral-500 dark:text-neutral-400">{{ t("import.running") }}</p>
       <ImportReport v-else-if="report" :report="report" @close="dismiss" />
+      <RecomputeReport v-if="skipped.length" :skipped="skipped" @open="open" @close="dismissRecompute" />
       <ActivityDetail v-if="openedActivity" :activity="openedActivity" @back="back" @deleted="deleted" />
       <ActivityList v-else-if="activities?.length" :activities="activities" @open="open" />
       <div v-else-if="activities && !running && !report" class="text-center text-neutral-500 dark:text-neutral-400">

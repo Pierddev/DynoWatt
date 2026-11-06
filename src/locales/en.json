@@ -42,6 +42,13 @@
     "deleting": "Deleting…",
     "error": "The activity could not be deleted: {reason}"
   },
+  "recompute": {
+    "running": "Updating activity figures…",
+    "error": "The activity figures could not be updated: {reason}",
+    "title": "Figures not updated",
+    "body": "These activities keep figures computed by an older version of DynoWatt. They are tried again at the next start.",
+    "close": "Close"
+  },
   "telemetry": {
     "title": "Telemetry",
     "none": "This activity has no power, heart rate, cadence, altitude or speed to chart.",

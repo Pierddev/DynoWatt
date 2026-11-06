@@ -9,6 +9,7 @@ use std::sync::Mutex;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{Connection, OptionalExtension, Row, ToSql, named_params};
+use serde::Serialize;
 
 use crate::summary::ActivitySummary;
 
@@ -19,8 +20,8 @@ pub struct AthleteId(pub i64);
 /// The single Athlete the first migration creates.
 pub const DEFAULT_ATHLETE: AthleteId = AthleteId(1);
 
-/// Row id of an Activity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Row id of an Activity, a plain number to the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ActivityId(pub i64);
 
 /// The FIT `file_id` triple, the first key of Duplicate detection. FIT makes
@@ -213,15 +214,20 @@ pub fn delete_activity(conn: &Connection, id: ActivityId) -> rusqlite::Result<bo
     Ok(conn.execute("DELETE FROM activity WHERE id = ?1", [id.0])? > 0)
 }
 
-/// The Activities whose summary was computed by rules older than
-/// `current_version`, oldest import first.
-pub fn list_stale_summaries(
+/// The first Activity after `after`, or from the start when `None`, whose
+/// summary was computed by rules older than `current_version`. In id order,
+/// so oldest import first.
+pub fn next_stale_summary(
     conn: &Connection,
     current_version: u32,
-) -> rusqlite::Result<Vec<Activity>> {
-    conn.prepare("SELECT * FROM activity WHERE summary_version < ?1 ORDER BY id")?
-        .query_map([current_version], read_activity)?
-        .collect()
+    after: Option<ActivityId>,
+) -> rusqlite::Result<Option<Activity>> {
+    conn.query_row(
+        "SELECT * FROM activity WHERE summary_version < ?1 AND id > ?2 ORDER BY id LIMIT 1",
+        (current_version, after.map_or(0, |id| id.0)),
+        read_activity,
+    )
+    .optional()
 }
 
 /// Replaces the Activity Summary of the Activity `id`, and the version that

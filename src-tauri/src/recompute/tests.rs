@@ -1,7 +1,10 @@
 use std::fs;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
+use std::sync::MutexGuard;
 
 use chrono::{DateTime, Duration, Utc};
+use serde_json::json;
 use tempfile::TempDir;
 
 use super::*;
@@ -86,18 +89,22 @@ fn current_record(n: u32) -> ActivityRecord {
     }
 }
 
-/// An empty Library and a database.
+/// An empty Library and a database, shared as the commands share it.
 struct Setup {
     dir: TempDir,
-    conn: Connection,
+    database: Mutex<Connection>,
 }
 
 impl Setup {
     fn new() -> Self {
         Setup {
             dir: TempDir::new().unwrap(),
-            conn: open_in_memory().unwrap(),
+            database: Mutex::new(open_in_memory().unwrap()),
         }
+    }
+
+    fn conn(&self) -> MutexGuard<'_, Connection> {
+        self.database.lock().unwrap()
     }
 
     fn library(&self) -> PathBuf {
@@ -112,15 +119,15 @@ impl Setup {
             fs::create_dir_all(file.parent().unwrap()).unwrap();
             fs::write(file, bytes).unwrap();
         }
-        insert_activity(&self.conn, record).unwrap()
+        insert_activity(&self.conn(), record).unwrap()
     }
 
     fn recompute(&self) -> RecomputeReport {
-        stale_summaries(&self.conn, &self.library()).unwrap()
+        stale_summaries(&self.database, &self.library()).unwrap()
     }
 
     fn record(&self, id: ActivityId) -> ActivityRecord {
-        list_activities(&self.conn, DEFAULT_ATHLETE)
+        list_activities(&self.conn(), DEFAULT_ATHLETE)
             .unwrap()
             .into_iter()
             .find(|activity| activity.id == id)
@@ -219,7 +226,7 @@ fn an_activity_the_database_refuses_to_update_is_skipped() {
     let refused = setup.activity(&version_1_record(1), Some(&ride(1)));
     let accepted = setup.activity(&version_1_record(2), Some(&ride(2)));
     setup
-        .conn
+        .conn()
         .execute(
             &format!(
                 "CREATE TEMP TRIGGER refuse BEFORE UPDATE ON activity WHEN OLD.id = {}
@@ -246,9 +253,107 @@ fn an_activity_the_database_refuses_to_update_is_skipped() {
 }
 
 #[test]
+fn every_stale_summary_is_recomputed_once() {
+    let setup = Setup::new();
+    let ids: Vec<_> = (1..=3)
+        .map(|n| setup.activity(&version_1_record(n), Some(&ride(n))))
+        .collect();
+
+    let first = setup.recompute();
+    let second = setup.recompute();
+
+    assert_eq!(
+        first,
+        RecomputeReport {
+            recomputed: ids.clone(),
+            skipped: vec![],
+        }
+    );
+    assert_eq!(second, RecomputeReport::default());
+    for (n, id) in (1..=3).zip(ids) {
+        assert_eq!(setup.record(id), current_record(n));
+    }
+}
+
+#[test]
+fn a_run_tells_what_it_recomputed_and_skipped() {
+    let setup = Setup::new();
+    let missing = setup.activity(&version_1_record(1), None);
+    let present = setup.activity(&version_1_record(2), Some(&ride(2)));
+
+    let Status::Done(report) = run(&setup.database, &setup.library()) else {
+        panic!("the run did not finish");
+    };
+
+    assert_eq!(report.recomputed, [present]);
+    assert_eq!(
+        report
+            .skipped
+            .iter()
+            .map(|skipped| skipped.activity_id)
+            .collect::<Vec<_>>(),
+        [missing]
+    );
+}
+
+#[test]
 fn the_run_fails_when_the_stale_summaries_cannot_be_listed() {
     let setup = Setup::new();
-    setup.conn.execute("DROP TABLE activity", []).unwrap();
+    setup.conn().execute("DROP TABLE activity", []).unwrap();
 
-    assert!(stale_summaries(&setup.conn, &setup.library()).is_err());
+    assert_eq!(
+        run(&setup.database, &setup.library()),
+        Status::Failed {
+            reason: "cannot list the stale summaries: no such table: activity".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn the_run_fails_when_the_database_is_unavailable() {
+    let setup = Setup::new();
+    setup.activity(&version_1_record(1), Some(&ride(1)));
+    // A command that panics while holding the database leaves it poisoned.
+    let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+        let _conn = setup.conn();
+        panic!("a command failed while holding the database");
+    }));
+
+    assert_eq!(
+        run(&setup.database, &setup.library()),
+        Status::Failed {
+            reason: "the database is unavailable".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn the_status_reads_as_the_window_expects() {
+    let done = Status::Done(RecomputeReport {
+        recomputed: vec![ActivityId(1)],
+        skipped: vec![Skipped {
+            activity_id: ActivityId(2),
+            reason: "cannot read 2026/ride-2.fit".to_owned(),
+        }],
+    });
+    let failed = Status::Failed {
+        reason: "the database is unavailable".to_owned(),
+    };
+
+    assert_eq!(
+        serde_json::to_value(Status::Running).unwrap(),
+        json!({"kind": "running"})
+    );
+    assert_eq!(
+        serde_json::to_value(done).unwrap(),
+        json!({
+            "kind": "done",
+            "recomputed": [1],
+            "skipped": [{"activityId": 2, "reason": "cannot read 2026/ride-2.fit"}]
+        })
+    );
+    assert_eq!(
+        serde_json::to_value(failed).unwrap(),
+        json!({"kind": "failed", "reason": "the database is unavailable"})
+    );
 }

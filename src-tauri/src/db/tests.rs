@@ -522,10 +522,10 @@ fn deleting_an_unknown_activity_reports_it() {
 }
 
 #[test]
-fn stale_summaries_are_those_older_than_the_current_version() {
+fn the_next_stale_summary_is_the_first_older_than_the_current_version_after_the_last() {
     let conn = open_in_memory().unwrap();
     let mut stale = Vec::new();
-    for (n, summary_version) in [(1, 1), (2, 3), (3, 0), (4, 2)] {
+    for (n, summary_version) in [(1, 1), (2, 3), (3, 2), (4, 0), (5, 1)] {
         let record = ActivityRecord {
             summary_version,
             ..record(n)
@@ -535,8 +535,14 @@ fn stale_summaries_are_those_older_than_the_current_version() {
             stale.push(Activity { id, record });
         }
     }
+    let next = |after: Option<&Activity>| {
+        next_stale_summary(&conn, 2, after.map(|activity| activity.id)).unwrap()
+    };
 
-    assert_eq!(list_stale_summaries(&conn, 2).unwrap(), stale);
+    assert_eq!(next(None).as_ref(), Some(&stale[0]));
+    assert_eq!(next(Some(&stale[0])).as_ref(), Some(&stale[1]));
+    assert_eq!(next(Some(&stale[1])).as_ref(), Some(&stale[2]));
+    assert_eq!(next(Some(&stale[2])), None);
 }
 
 #[test]

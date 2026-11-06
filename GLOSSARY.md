@@ -1,6 +1,6 @@
 # DynoWatt
 
-Local-first analytics for cyclists: importing recorded rides, inspecting their telemetry, and modelling the athlete's power-duration profile.
+Local-first analytics for cyclists: importing recorded rides, inspecting their telemetry, modelling the athlete's power-duration profile, and planning structured sessions to ride from a Bike Computer.
 
 ## Language
 
@@ -18,7 +18,7 @@ _Avoid_: Settings, profile, zones
 
 **Activity**:
 One recorded cycling session, imported from exactly one Source File.
-_Avoid_: Ride, workout, session, training
+_Avoid_: Ride, session, training, Workout (that is planned, not recorded)
 
 **Indoor Activity**:
 An Activity ridden on a home trainer, as opposed to an outdoor ride on the road or trails.
@@ -31,6 +31,10 @@ _Avoid_: Stats, overview, totals
 **Average Power**:
 Mean power over the Moving Time, counting zero-watt coasting but excluding Gaps.
 _Avoid_: Mean power, avg watts
+
+**Bike Computer**:
+The device, on the handlebars or the wrist, that records Activities and guides the Athlete through Workouts.
+_Avoid_: Device, head unit, GPS unit, Garmin
 
 **Source File**:
 The original `.FIT` file an Activity was imported from, kept unmodified as the reference copy of its data.
@@ -86,6 +90,10 @@ _Avoid_: Power curve, CP curve
 The highest power the Athlete can sustain without drawing down W', as estimated from the PDC.
 _Avoid_: Threshold (that is FTP)
 
+**FTP** (Functional Threshold Power):
+The highest power the Athlete can hold for about an hour; the reference Power Targets are expressed against.
+_Avoid_: Threshold power, CP (a different, model-based estimate)
+
 **W'** (W prime):
 The finite amount of work, in joules, the Athlete can perform above CP before exhaustion.
 _Avoid_: Anaerobic capacity, battery
@@ -93,3 +101,29 @@ _Avoid_: Anaerobic capacity, battery
 **W'bal** (W' balance):
 How much of W' remains at each instant of an Activity, depleting above CP and recovering below it.
 _Avoid_: W' remaining, matches
+
+### Workouts
+
+**Workout**:
+A named, planned cycling session, described as an ordered sequence of Steps and Repeats, for the Athlete to ride later from their Bike Computer. A Workout is planned; an Activity is recorded.
+_Avoid_: Training plan, session, structured workout, interval session
+
+**Step**:
+One part of a Workout with a fixed duration, a Step Kind and an optional Power Target.
+_Avoid_: Interval, block, segment, phase
+
+**Step Kind**:
+The role a Step plays in a Workout: Warm-up, Work, Recovery or Cool-down.
+_Avoid_: Intensity, type, zone
+
+**Repeat**:
+A sequence of Steps ridden a given number of times in a row, such as 3 × (5 min Work, 5 min Recovery). A Repeat holds only Steps, never another Repeat.
+_Avoid_: Set, loop, block
+
+**Power Target**:
+The range of power, from a lower to a strictly higher percentage of the FTP set on the Bike Computer, that the Athlete aims to hold during a Step. A Step without a Power Target is ridden freely.
+_Avoid_: Zone, intensity, goal
+
+**Workout File**:
+The `.FIT` file DynoWatt writes from a Workout for the Athlete to copy onto their Bike Computer. DynoWatt writes it rather than imports it, and keeps no trace of it once written.
+_Avoid_: Export, plan file, Source File

@@ -585,3 +585,186 @@ fn updating_a_summary_rewrites_only_its_figures_and_version() {
         ]
     );
 }
+
+fn step(duration_s: u32, kind: StepKind, target: Option<(u16, u16)>) -> Step {
+    Step {
+        duration_s,
+        kind,
+        target: target.map(|(low_pct, high_pct)| PowerTarget { low_pct, high_pct }),
+    }
+}
+
+/// A Workout with every shape of sequence: Steps in a row, a Step next to a
+/// Repeat, two Repeats in a row, free Steps and Power Targets.
+fn workout(name: &str) -> Workout {
+    Workout {
+        name: name.to_owned(),
+        items: vec![
+            Item::Step(step(600, StepKind::WarmUp, Some((50, 75)))),
+            Item::Step(step(60, StepKind::Recovery, None)),
+            Item::Repeat(Repeat {
+                times: 3,
+                steps: vec![
+                    step(480, StepKind::Work, Some((88, 94))),
+                    step(120, StepKind::Recovery, None),
+                ],
+            }),
+            Item::Repeat(Repeat {
+                times: 2,
+                steps: vec![step(30, StepKind::Work, Some((120, 150)))],
+            }),
+            Item::Step(step(300, StepKind::CoolDown, None)),
+        ],
+    }
+}
+
+fn count(conn: &Connection, table: &str) -> i64 {
+    conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+        row.get(0)
+    })
+    .unwrap()
+}
+
+#[test]
+fn an_inserted_workout_reads_back_unchanged() {
+    let mut conn = open_in_memory().unwrap();
+
+    let id = insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("Sweet spot")).unwrap();
+
+    assert_eq!(
+        find_workout(&conn, id).unwrap(),
+        Some(workout("Sweet spot"))
+    );
+}
+
+#[test]
+fn step_kinds_are_stored_as_text() {
+    let mut conn = open_in_memory().unwrap();
+    insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("Sweet spot")).unwrap();
+
+    let kinds: Vec<String> = conn
+        .prepare("SELECT kind FROM workout_step ORDER BY item_position, position")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+
+    assert_eq!(
+        kinds,
+        [
+            "warm_up",
+            "recovery",
+            "work",
+            "recovery",
+            "work",
+            "cool_down"
+        ]
+    );
+}
+
+#[test]
+fn an_unknown_stored_step_kind_is_an_error() {
+    let mut conn = open_in_memory().unwrap();
+    let id = insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("Sweet spot")).unwrap();
+    conn.execute("UPDATE workout_step SET kind = 'sprint'", [])
+        .unwrap();
+
+    assert!(find_workout(&conn, id).is_err());
+}
+
+#[test]
+fn a_workout_must_belong_to_an_existing_athlete() {
+    let mut conn = open_in_memory().unwrap();
+
+    assert!(insert_workout(&mut conn, AthleteId(2), &workout("Sweet spot")).is_err());
+    assert_eq!(count(&conn, "workout"), 0);
+}
+
+#[test]
+fn an_unknown_workout_is_not_found() {
+    let conn = open_in_memory().unwrap();
+
+    assert_eq!(find_workout(&conn, WorkoutId(1)).unwrap(), None);
+}
+
+#[test]
+fn workouts_are_listed_in_creation_order() {
+    let mut conn = open_in_memory().unwrap();
+    let b = insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("B")).unwrap();
+    let a = insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("A")).unwrap();
+
+    assert_eq!(
+        list_workouts(&conn, DEFAULT_ATHLETE).unwrap(),
+        [(b, workout("B")), (a, workout("A"))]
+    );
+}
+
+#[test]
+fn only_the_given_athletes_workouts_are_listed() {
+    let mut conn = open_in_memory().unwrap();
+    conn.execute(
+        "INSERT INTO athlete (id, name, created_at) VALUES (2, 'Other', '2026-01-01T00:00:00Z')",
+        [],
+    )
+    .unwrap();
+    insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("Mine")).unwrap();
+    let theirs = insert_workout(&mut conn, AthleteId(2), &workout("Theirs")).unwrap();
+
+    assert_eq!(
+        list_workouts(&conn, AthleteId(2)).unwrap(),
+        [(theirs, workout("Theirs"))]
+    );
+}
+
+#[test]
+fn an_update_replaces_the_name_and_the_whole_sequence() {
+    let mut conn = open_in_memory().unwrap();
+    let id = insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("Old")).unwrap();
+    let other = insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("Other")).unwrap();
+    let new = Workout {
+        name: "New".to_owned(),
+        items: vec![Item::Step(step(60, StepKind::Work, None))],
+    };
+
+    assert!(update_workout(&mut conn, id, &new).unwrap());
+
+    assert_eq!(find_workout(&conn, id).unwrap(), Some(new));
+    assert_eq!(find_workout(&conn, other).unwrap(), Some(workout("Other")));
+}
+
+#[test]
+fn updating_an_unknown_workout_changes_nothing() {
+    let mut conn = open_in_memory().unwrap();
+    let id = insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("Kept")).unwrap();
+
+    assert!(!update_workout(&mut conn, WorkoutId(id.0 + 1), &workout("New")).unwrap());
+
+    assert_eq!(
+        list_workouts(&conn, DEFAULT_ATHLETE).unwrap(),
+        [(id, workout("Kept"))]
+    );
+}
+
+#[test]
+fn a_deleted_workout_leaves_no_item_or_step_behind() {
+    let mut conn = open_in_memory().unwrap();
+    let deleted = insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("Gone")).unwrap();
+    let kept = insert_workout(&mut conn, DEFAULT_ATHLETE, &workout("Kept")).unwrap();
+
+    assert!(delete_workout(&conn, deleted).unwrap());
+
+    assert_eq!(
+        list_workouts(&conn, DEFAULT_ATHLETE).unwrap(),
+        [(kept, workout("Kept"))]
+    );
+    assert_eq!(count(&conn, "workout_item"), 5);
+    assert_eq!(count(&conn, "workout_step"), 6);
+}
+
+#[test]
+fn deleting_an_unknown_workout_reports_it() {
+    let conn = open_in_memory().unwrap();
+
+    assert!(!delete_workout(&conn, WorkoutId(1)).unwrap());
+}

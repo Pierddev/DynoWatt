@@ -12,6 +12,7 @@ use rusqlite::{Connection, OptionalExtension, Row, ToSql, named_params};
 use serde::Serialize;
 
 use crate::summary::ActivitySummary;
+use crate::workouts::{Item, PowerTarget, Repeat, Step, StepKind, Workout};
 
 /// Row id of an Athlete.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +24,10 @@ pub const DEFAULT_ATHLETE: AthleteId = AthleteId(1);
 /// Row id of an Activity, a plain number to the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ActivityId(pub i64);
+
+/// Row id of a Workout, a plain number to the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct WorkoutId(pub i64);
 
 /// The FIT `file_id` triple, the first key of Duplicate detection. FIT makes
 /// each part optional.
@@ -260,6 +265,193 @@ pub fn update_summary(
         },
     )?;
     Ok(())
+}
+
+/// Stores a new Workout of the Athlete as it is: checking its rules is the
+/// caller's job.
+pub fn insert_workout(
+    conn: &mut Connection,
+    athlete_id: AthleteId,
+    workout: &Workout,
+) -> rusqlite::Result<WorkoutId> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT INTO workout (athlete_id, name) VALUES (?1, ?2)",
+        (athlete_id.0, &workout.name),
+    )?;
+    let id = WorkoutId(tx.last_insert_rowid());
+    insert_items(&tx, id, &workout.items)?;
+    tx.commit()?;
+    Ok(id)
+}
+
+/// Replaces the name and the whole sequence of the Workout `id`. Returns
+/// `false` when no Workout has this id.
+pub fn update_workout(
+    conn: &mut Connection,
+    id: WorkoutId,
+    workout: &Workout,
+) -> rusqlite::Result<bool> {
+    let tx = conn.transaction()?;
+    if tx.execute(
+        "UPDATE workout SET name = ?2 WHERE id = ?1",
+        (id.0, &workout.name),
+    )? == 0
+    {
+        return Ok(false);
+    }
+    // Cascades to the Steps.
+    tx.execute("DELETE FROM workout_item WHERE workout_id = ?1", [id.0])?;
+    insert_items(&tx, id, &workout.items)?;
+    tx.commit()?;
+    Ok(true)
+}
+
+/// The Workout `id`, or `None` when no Workout has this id.
+pub fn find_workout(conn: &Connection, id: WorkoutId) -> rusqlite::Result<Option<Workout>> {
+    let name = conn
+        .query_row("SELECT name FROM workout WHERE id = ?1", [id.0], |row| {
+            row.get(0)
+        })
+        .optional()?;
+    name.map(|name| read_workout(conn, id, name)).transpose()
+}
+
+/// The Athlete's Workouts, in the order they were created.
+pub fn list_workouts(
+    conn: &Connection,
+    athlete_id: AthleteId,
+) -> rusqlite::Result<Vec<(WorkoutId, Workout)>> {
+    let named = conn
+        .prepare("SELECT id, name FROM workout WHERE athlete_id = ?1 ORDER BY id")?
+        .query_map([athlete_id.0], |row| {
+            Ok((WorkoutId(row.get(0)?), row.get(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    named
+        .into_iter()
+        .map(|(id, name)| Ok((id, read_workout(conn, id, name)?)))
+        .collect()
+}
+
+/// Deletes the Workout `id` with its sequence. Returns `false` when no
+/// Workout has this id.
+pub fn delete_workout(conn: &Connection, id: WorkoutId) -> rusqlite::Result<bool> {
+    Ok(conn.execute("DELETE FROM workout WHERE id = ?1", [id.0])? > 0)
+}
+
+fn insert_items(conn: &Connection, id: WorkoutId, items: &[Item]) -> rusqlite::Result<()> {
+    let mut insert_item = conn.prepare(
+        "INSERT INTO workout_item (workout_id, position, repeat_times) VALUES (?1, ?2, ?3)",
+    )?;
+    let mut insert_step = conn.prepare(
+        "INSERT INTO workout_step (
+           workout_id, item_position, position,
+           duration_s, kind, target_low_pct, target_high_pct
+         ) VALUES (
+           :workout_id, :item_position, :position,
+           :duration_s, :kind, :target_low_pct, :target_high_pct
+         )",
+    )?;
+    for (item_position, item) in (0_i64..).zip(items) {
+        let repeat_times = match item {
+            Item::Step(_) => None,
+            Item::Repeat(repeat) => Some(repeat.times),
+        };
+        insert_item.execute((id.0, item_position, repeat_times))?;
+        for (position, step) in (0_i64..).zip(item.steps()) {
+            insert_step.execute(named_params! {
+                ":workout_id": id.0,
+                ":item_position": item_position,
+                ":position": position,
+                ":duration_s": step.duration_s,
+                ":kind": step.kind,
+                ":target_low_pct": step.target.map(|target| target.low_pct),
+                ":target_high_pct": step.target.map(|target| target.high_pct),
+            })?;
+        }
+    }
+    Ok(())
+}
+
+/// The Workout `id` named `name`, with its sequence read back. A Repeat left
+/// without Steps would not come back, but the rules forbid saving one.
+fn read_workout(conn: &Connection, id: WorkoutId, name: String) -> rusqlite::Result<Workout> {
+    let mut statement = conn.prepare(
+        "SELECT item.position, item.repeat_times,
+                step.duration_s, step.kind, step.target_low_pct, step.target_high_pct
+         FROM workout_item item
+         JOIN workout_step step
+           ON step.workout_id = item.workout_id AND step.item_position = item.position
+         WHERE item.workout_id = ?1
+         ORDER BY item.position, step.position",
+    )?;
+    let rows = statement.query_map([id.0], |row| {
+        Ok((
+            row.get::<_, i64>("position")?,
+            row.get::<_, Option<u32>>("repeat_times")?,
+            read_step(row)?,
+        ))
+    })?;
+    let mut items: Vec<Item> = Vec::new();
+    let mut last_position = None;
+    for row in rows {
+        let (position, repeat_times, step) = row?;
+        let same_item = last_position == Some(position);
+        last_position = Some(position);
+        match (repeat_times, items.last_mut()) {
+            (Some(_), Some(Item::Repeat(repeat))) if same_item => repeat.steps.push(step),
+            (Some(times), _) => items.push(Item::Repeat(Repeat {
+                times,
+                steps: vec![step],
+            })),
+            (None, _) => items.push(Item::Step(step)),
+        }
+    }
+    Ok(Workout { name, items })
+}
+
+fn read_step(row: &Row<'_>) -> rusqlite::Result<Step> {
+    let target = match (row.get("target_low_pct")?, row.get("target_high_pct")?) {
+        (Some(low_pct), Some(high_pct)) => Some(PowerTarget { low_pct, high_pct }),
+        _ => None,
+    };
+    Ok(Step {
+        duration_s: row.get("duration_s")?,
+        kind: row.get("kind")?,
+        target,
+    })
+}
+
+/// A Step Kind in its stored text form, as listed in migration 2.
+fn kind_text(kind: StepKind) -> &'static str {
+    match kind {
+        StepKind::WarmUp => "warm_up",
+        StepKind::Work => "work",
+        StepKind::Recovery => "recovery",
+        StepKind::CoolDown => "cool_down",
+    }
+}
+
+impl ToSql for StepKind {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(kind_text(*self).into())
+    }
+}
+
+impl FromSql for StepKind {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let text = value.as_str()?;
+        [
+            StepKind::WarmUp,
+            StepKind::Work,
+            StepKind::Recovery,
+            StepKind::CoolDown,
+        ]
+        .into_iter()
+        .find(|kind| kind_text(*kind) == text)
+        .ok_or_else(|| FromSqlError::Other(format!("unknown Step Kind {text:?}").into()))
+    }
 }
 
 fn read_activity(row: &Row<'_>) -> rusqlite::Result<Activity> {

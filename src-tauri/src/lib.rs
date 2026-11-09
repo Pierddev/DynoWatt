@@ -6,9 +6,12 @@ pub mod library;
 pub mod recompute;
 pub mod summary;
 pub mod telemetry;
+pub mod workouts;
 
 use std::path::PathBuf;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
+
+use rusqlite::Connection;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -31,10 +34,7 @@ fn import_paths(
     database: State<'_, db::Database>,
     library: State<'_, Library>,
 ) -> Result<import::ImportReport, String> {
-    let conn = database
-        .0
-        .lock()
-        .map_err(|_| "the database is unavailable".to_owned())?;
+    let conn = connection(&database)?;
     Ok(import::run(&conn, &library.0, &paths, chrono::Utc::now()))
 }
 
@@ -43,10 +43,7 @@ fn import_paths(
 fn list_activities(
     database: State<'_, db::Database>,
 ) -> Result<Vec<activities::ListedActivity>, String> {
-    let conn = database
-        .0
-        .lock()
-        .map_err(|_| "the database is unavailable".to_owned())?;
+    let conn = connection(&database)?;
     activities::list(&conn, db::DEFAULT_ATHLETE).map_err(|err| err.to_string())
 }
 
@@ -58,10 +55,7 @@ fn activity_telemetry(
     database: State<'_, db::Database>,
     library: State<'_, Library>,
 ) -> Result<telemetry::Telemetry, String> {
-    let conn = database
-        .0
-        .lock()
-        .map_err(|_| "the database is unavailable".to_owned())?;
+    let conn = connection(&database)?;
     telemetry::of_activity(&conn, &library.0, db::ActivityId(id))
 }
 
@@ -73,10 +67,7 @@ fn delete_activity(
     database: State<'_, db::Database>,
     library: State<'_, Library>,
 ) -> Result<(), String> {
-    let mut conn = database
-        .0
-        .lock()
-        .map_err(|_| "the database is unavailable".to_owned())?;
+    let mut conn = connection(&database)?;
     library::delete_activity(&mut conn, &library.0, db::ActivityId(id))
 }
 
@@ -88,6 +79,76 @@ fn recompute_status(recompute: State<'_, Recompute>) -> recompute::Status {
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .clone()
+}
+
+/// The Athlete's Workouts with their total duration, in the order they were
+/// created.
+#[tauri::command(async)]
+fn list_workouts(
+    database: State<'_, db::Database>,
+) -> Result<Vec<workouts::ListedWorkout>, String> {
+    let conn = connection(&database)?;
+    workouts::list(&conn, db::DEFAULT_ATHLETE).map_err(|err| err.to_string())
+}
+
+/// The Workout `id`, for the editor.
+#[tauri::command(async)]
+fn get_workout(id: i64, database: State<'_, db::Database>) -> Result<workouts::Workout, String> {
+    workouts::get(&*connection(&database)?, db::WorkoutId(id))
+}
+
+/// Every rule `workout` breaks, for the editor to show on the Steps at fault.
+#[tauri::command]
+fn validate_workout(workout: workouts::Workout) -> Vec<workouts::Problem> {
+    workouts::validate(&workout)
+}
+
+/// Saves `workout` as a new Workout, unless it breaks a rule, and returns its
+/// id.
+#[tauri::command(async)]
+fn create_workout(
+    workout: workouts::Workout,
+    database: State<'_, db::Database>,
+) -> Result<db::WorkoutId, String> {
+    workouts::create(&mut *connection(&database)?, db::DEFAULT_ATHLETE, workout)
+}
+
+/// Replaces the Workout `id` with `workout`, unless it breaks a rule.
+#[tauri::command(async)]
+fn update_workout(
+    id: i64,
+    workout: workouts::Workout,
+    database: State<'_, db::Database>,
+) -> Result<(), String> {
+    workouts::update(&mut *connection(&database)?, db::WorkoutId(id), workout)
+}
+
+/// Saves a copy of the Workout `id` named `name`, and returns the copy's id.
+#[tauri::command(async)]
+fn duplicate_workout(
+    id: i64,
+    name: String,
+    database: State<'_, db::Database>,
+) -> Result<db::WorkoutId, String> {
+    workouts::duplicate(
+        &mut *connection(&database)?,
+        db::DEFAULT_ATHLETE,
+        db::WorkoutId(id),
+        name,
+    )
+}
+
+#[tauri::command(async)]
+fn delete_workout(id: i64, database: State<'_, db::Database>) -> Result<(), String> {
+    workouts::delete(&*connection(&database)?, db::WorkoutId(id))
+}
+
+/// The connection to the database, once no other command holds it.
+fn connection(database: &db::Database) -> Result<MutexGuard<'_, Connection>, String> {
+    database
+        .0
+        .lock()
+        .map_err(|_| "the database is unavailable".to_owned())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -109,7 +170,14 @@ pub fn run() {
             list_activities,
             activity_telemetry,
             delete_activity,
-            recompute_status
+            recompute_status,
+            list_workouts,
+            get_workout,
+            validate_workout,
+            create_workout,
+            update_workout,
+            duplicate_workout,
+            delete_workout
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
